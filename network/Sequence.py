@@ -11,11 +11,11 @@ class FingerPrintNet(nn.Module):
         hidden_dim: int = 96,
         dropout: float = 0.5,
     ):
-        super(FingerPrintNet).__init__()
+        super().__init__()
+        
         self.embed_dim_in = embed_dim_in
         self.embed_dim_out = embed_dim_out
         self.hidden_dim = hidden_dim
-        self.dropout = dropout
         
         self.fc1 = nn.Linear(embed_dim_in, embed_dim_out)
         self.relu = nn.ReLU()
@@ -33,7 +33,7 @@ class FingerPrintNet(nn.Module):
 
 class SequenceExcitationBlock(nn.Module):
     def __init__(self, in_channels: int):
-        super(SequenceExcitationBlock).__init__()
+        super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool1d(1)
         self.conv1 = nn.Conv1d(in_channels, in_channels // 16, kernel_size=1)
         self.relu = nn.ReLU()
@@ -59,12 +59,12 @@ class SMICNN(nn.Module):
         out_dim: int = 96,
         dropout: float = 0.5,
     ):
-        super(SMICNN).__init__()
+        super().__init__()
         
         self.dropout = nn.Dropout(dropout)
         self.relu = nn.ReLU()
         
-        self.embedding = nn.Linear(embed_dim, hidden_dim)
+        self.embedding = nn.Embedding(embed_dim, hidden_dim)
         
         self.conv_2_kernel = nn.Conv1d(in_channels=embed_dim, out_channels=n_filters, kernel_size=2)
         self.fc_2_kernel = nn.Linear(32 * 127, out_dim)
@@ -82,13 +82,13 @@ class SMICNN(nn.Module):
     
     def forward(self, x):
         embed_x = self.embedding(x)
-        
+
         # kernel size 2
         conv_2_kernel = self.conv_2_kernel(embed_x)
         conv_2_kernel = self.relu(conv_2_kernel)
         SE_2_kernel = self.SE(conv_2_kernel)
         conv_2_kernel = conv_2_kernel * SE_2_kernel
-        
+
         # kernel size 4
         conv_4_kernel = self.conv_4_kernel(embed_x)
         conv_4_kernel = self.relu(conv_4_kernel)
@@ -115,3 +115,17 @@ class SMICNN(nn.Module):
         combine_features = self.fc_combine(combine_features)
         
         return combine_features # (batch_size, out_dim)
+    
+if __name__ == '__main__':
+    # Test the FingerPrintNet (B, 1489)
+    x = torch.randn(16, 1489)
+    fp_net = FingerPrintNet()
+    y = fp_net(x)
+    print(y.shape) # (16, 96)
+    
+    # create a X (B, 100), and the value must be in range [0, embed_dim-1]
+    x = torch.randint(0, 100, (16, 100)).to(torch.long)
+    
+    smicnn = SMICNN()
+    y = smicnn(x)
+    print(y.shape) # (16, 96)

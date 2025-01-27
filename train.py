@@ -40,7 +40,7 @@ def get_args():
         default=0,
         help="How many steps to warm-up over. Defaults to 0 for no warm-up",
     )
-    parser.add_argument("--lr", default=2e-4, type=float, help="learning rate")
+    parser.add_argument("--lr", default=1e-3, type=float, help="learning rate")
     parser.add_argument(
         "--lr-patience",
         type=int,
@@ -60,12 +60,12 @@ def get_args():
         help="Minimum learning rate before early stop",
     )
     parser.add_argument(
-        "--weight-decay", type=float, default=1e-5, help="Weight decay strength"
+        "--weight-decay", type=float, default=1e-4, help="Weight decay strength"
     )
     parser.add_argument(
         "--early-stopping-patience",
         type=int,
-        default=30,
+        default=100,
         help="Stop training after this many epochs without improvement",
     )
 
@@ -79,12 +79,6 @@ def get_args():
     )
     parser.add_argument(
         "--dataset-root", default='./data', type=str, help="Data storage directory"
-    )
-    parser.add_argument(
-        "--max-nodes",
-        default=None,
-        type=int,
-        help="Maximum number of nodes for padding in the dataset",
     )
 
     # dataloader specific
@@ -135,19 +129,7 @@ def get_args():
 
     # architectural specific
     parser.add_argument(
-        "--max-z",
-        type=int,
-        default=100,
-        help="Maximum atomic number that fits in the embedding matrix",
-    )
-    parser.add_argument(
-        "--embedding-dim", type=int, default=128, help="Embedding dimension"
-    )
-    parser.add_argument(
-        "--ffn-embedding-dim",
-        type=int,
-        default=256,
-        help="Embedding dimension for feedforward network",
+        "--embed-dim", type=int, default=128, help="Embedding dimension"
     )
     parser.add_argument(
         "--num-layers",
@@ -157,24 +139,6 @@ def get_args():
     )
     parser.add_argument(
         "--num-heads", type=int, default=8, help="Number of attention heads"
-    )
-    parser.add_argument(
-        "--cutoff", type=float, default=5.0, help="Cutoff in model"
-    )
-    parser.add_argument(
-        "--num-rbf",
-        type=int,
-        default=32,
-        help="Number of radial basis functions in model",
-    )
-    parser.add_argument(
-        "--trainable-rbf",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="If distance expansion functions should be trainable",
-    )
-    parser.add_argument(
-        "--norm-type", type=str, default="none", help="Du Normalization type"
     )
     parser.add_argument(
         "--dropout", type=float, default=0.2, help="Dropout rate"
@@ -191,10 +155,7 @@ def get_args():
         default=0.2,
         help="Dropout rate for activation",
     )
-    parser.add_argument(
-        "--pad-token-id", type=int, default=0, help="Padding token id"
-    )
-
+    
     # other specific
     parser.add_argument(
         "--num-nodes", type=int, default=1, help="Number of nodes"
@@ -253,11 +214,8 @@ def get_args():
 def auto_exp(args):
     dir_name = (
         f"bs_{args.batch_size}"
-        + f"_L{args.num_layers}_D{args.embedding_dim}_F{args.ffn_embedding_dim}"
-        + f"_H{args.num_heads}_rbf_{args.num_rbf}"
-        + f"_norm_{args.norm_type}"
+        + f"_L{args.num_layers}_D{args.embed_dim}"
         + f"_lr_{args.lr}"
-        + f"_cutoff_{args.cutoff}"
         + f"_seed_{args.seed}"
     )
 

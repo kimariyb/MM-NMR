@@ -6,6 +6,7 @@ from torch import einsum
 from einops import rearrange
 
 from network.Sequence import FingerPrintNet, SMICNN
+from network.Graph import GNN
 
 
 class AttentionBlock(nn.Module):
@@ -15,7 +16,7 @@ class AttentionBlock(nn.Module):
         num_heads=8, 
         dropout=0.1, 
     ):
-        super(AttentionBlock).__init__()
+        super(AttentionBlock, self).__init__()
         self.hidden_dim = hidden_dim
         self.num_heads = num_heads
         self.dropout = dropout
@@ -78,24 +79,56 @@ class AttentionBlock(nn.Module):
     
 class CrossAttentionBlock(nn.Module):
     def __init__(self):
-        super(CrossAttentionBlock).__init__()
+        super(CrossAttentionBlock, self).__init__()
         
         self.finger_encoder = FingerPrintNet()
         self.smiles_encoder = SMICNN()
-        self.graph_encoder = ...
+        self.graph_encoder = GNN()
         
         self.attention = AttentionBlock(hidden_dim=96, num_heads=8, dropout=0.1)
     
     def forward(self, data):
-        finger, vector, graph = data.fingerprint, data.vector, data.graph
+        finger, vector, node_features, edge_index, edge_attr = data.fingerprint, data.vector, data.x, data.edge_index, data.edge_attr
         
         # Encode fingerprints
         finger_embedding = self.finger_encoder(finger)
-        
+        print(finger_embedding.shape)
         # Encode SMILES
         smiles_embedding = self.smiles_encoder(vector)
-        
+        print(smiles_embedding.shape)
         # Encode graph
-        graph_embedding = self.graph_encoder(graph)
+        graph_embedding = self.graph_encoder(node_features, edge_index, edge_attr)
+        print(graph_embedding.shape)
+        # Cross-attention for molecule representation
+        feat1 = smiles_embedding + self.attention(finger_embedding, smiles_embedding, smiles_embedding)
+        feat2 = finger_embedding + self.attention(smiles_embedding, finger_embedding, finger_embedding)
         
-        return ...
+        # Cross-attention for interaction representation
+        feat3 = graph_embedding + self.attention(finger_embedding, graph_embedding, graph_embedding)
+        feat4 = finger_embedding + self.attention(graph_embedding, finger_embedding, finger_embedding)
+        
+        return feat1, feat2, feat3, feat4
+    
+
+class MultiViewRepresentation(nn.Module):
+    def __init__(self, embed_dim):
+        super(MultiViewRepresentation, self).__init__()
+        
+        self.cross_attention = CrossAttentionBlock()
+        
+        # Define readout function
+        self.readout = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim // 2), nn.LeakyReLU(0.1), nn.Dropout(0.1),
+            nn.Linear(embed_dim // 2, embed_dim // 4), nn.LeakyReLU(0.1), nn.Dropout(0.1),
+            nn.Linear(embed_dim // 4, embed_dim // 8), nn.LeakyReLU(0.1), nn.Dropout(0.1),
+            nn.Linear(embed_dim // 8, 1)
+        )
+    
+    def forward(self, data):
+        # Apply cross-attention
+        feat1, feat2, feat3, feat4 = self.cross_attention(data)
+        
+        x = torch.cat([feat1, feat2, feat3, feat4], dim=1)
+        x = self.readout(x)
+        
+        return x

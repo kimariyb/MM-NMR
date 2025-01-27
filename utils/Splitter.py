@@ -94,13 +94,13 @@ def number(text):
 
 
 def make_splits(
-        dataset_len: int,
-        train_size: float = 0.8,
-        val_size: float = 0.1,
-        test_size: float = 0.1,
-        seed: int = 42,
-        filename: str = None,
-        splits=None,
+    dataset_len: int,
+    train_size: float = 0.8,
+    val_size: float = 0.1,
+    test_size: float = 0.1,
+    seed: int = 42,
+    filename: str = None,
+    splits=None,
 ):
     r"""
     Creates train, validation and test splits for a dataset.
@@ -151,9 +151,9 @@ def make_splits(
 
 
 def save_argparse(
-        args: argparse.Namespace,
-        filename: str,
-        exclude: list = None
+    args: argparse.Namespace,
+    filename: str,
+    exclude: list = None
 ):
     r"""
     Saves the argparse namespace to a file.

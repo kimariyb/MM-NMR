@@ -58,6 +58,7 @@ class CarbonSpectraDataset(InMemoryDataset):
 
         # 读取数据
         for mol in tqdm(suppl, desc='Processing data', unit='mol', total=len(suppl)):
+            # 过滤数据
             if mol is None:
                 continue
             if mol.GetNumAtoms() < 2:

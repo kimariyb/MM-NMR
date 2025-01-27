@@ -6,13 +6,14 @@ from torch.nn.functional import l1_loss
 
 from pytorch_lightning import LightningModule
 
-    
+from network.Transformer import MultiViewRepresentation
+
 class LNNP(LightningModule):
     def __init__(self, config) -> None:
         super(LNNP, self).__init__()
 
         self.save_hyperparameters(config)
-        self.model = create_model(self.hparams)
+        self.model = MultiViewRepresentation()
         self._reset_losses_dict()
 
     def configure_optimizers(self):

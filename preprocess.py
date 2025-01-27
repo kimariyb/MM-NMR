@@ -202,5 +202,17 @@ if __name__ == "__main__":
     dataset = CarbonSpectraDataset(root='./data')
     data = dataset[0]
     
+    print(data.num_nodes)
+    print(data.x.shape)
+    print(data.edge_attr.shape)
     print(data.fingerprint.shape)
     print(data.vector.shape)
+        
+    from utils.Features import GetAtomFeaturesDim, GetBondFeaturesDim
+    print(GetAtomFeaturesDim())
+    print(GetBondFeaturesDim())
+    
+    from network.Transformer import MultiViewRepresentation
+    
+    model = MultiViewRepresentation(embed_dim=128)
+    out = model(data)

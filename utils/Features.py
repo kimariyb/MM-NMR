@@ -7,6 +7,8 @@ from rdkit.Chem import AllChem
 from utils.FingerPrint import GetPubChemFPs
 from typing import List
 
+from ogb.utils.features import atom_to_feature_vector
+
 # Disable rdkit warnings
 RDLogger.DisableLog('rdApp.*')
 
@@ -116,7 +118,6 @@ def FeatureEncoding(value: int, allowable_set: List[int]) -> List[int]:
         raise ValueError(f"Value {value} not in allowable set {allowable_set}")
     
     return [int(x == value) for x in allowable_set]
-
 
 
 def AtomToFeature(atom: Chem.rdchem.Atom):
@@ -343,4 +344,24 @@ def MolToFingerprints(mol):
     return np.array(fp)
 
 
+def GetAtomFeaturesDim():
+    return list(map(len, [
+        ALLOWABLE_FEATURES['atomic_num_list'],
+        ALLOWABLE_FEATURES['formal_charge_list'],
+        ALLOWABLE_FEATURES['chirality_list'],
+        ALLOWABLE_FEATURES['hybridization_list'],
+        ALLOWABLE_FEATURES['is_aromatic_list'],
+        ALLOWABLE_FEATURES['is_in_ring_list'],
+        ALLOWABLE_FEATURES['degree_list'],
+        ALLOWABLE_FEATURES['implicit_valence_list'],
+        ALLOWABLE_FEATURES['number_radical_e_list'],
+        ALLOWABLE_FEATURES['number_H_list']
+    ]))
 
+def GetBondFeaturesDim():
+    return list(map(len, [
+        ALLOWABLE_FEATURES['bond_type_list'],
+        ALLOWABLE_FEATURES['bond_stereo_list'],
+        ALLOWABLE_FEATURES['is_conjugated_list'],
+        ALLOWABLE_FEATURES['is_in_ring_list']
+    ]))
