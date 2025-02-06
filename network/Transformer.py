@@ -6,7 +6,7 @@ from torch import einsum
 from einops import rearrange
 
 from network.Sequence import FingerPrintNet, SMICNN
-from network.Graph import GNN
+from network.Graph import GNNModel
 
 
 class AttentionBlock(nn.Module):
@@ -83,7 +83,7 @@ class CrossAttentionBlock(nn.Module):
         
         self.finger_encoder = FingerPrintNet()
         self.smiles_encoder = SMICNN()
-        self.graph_encoder = GNN()
+        self.graph_encoder = GNNModel()
         
         self.attention = AttentionBlock(hidden_dim=96, num_heads=8, dropout=0.1)
     

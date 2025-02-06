@@ -138,3 +138,22 @@ class GNN(nn.Module):
         
         return node_representation
     
+
+class GNNModel(nn.Module):
+    def __init__(
+        self, 
+        num_layers: int = 6, 
+        emb_dim: int = 300, 
+        JK: str = "last", 
+        drop_ratio: float = 0.5, 
+        num_tasks: int = 1, 
+    ):
+        super(GNNModel, self).__init__()
+        self.gnn = GNN(num_layers, emb_dim, JK, drop_ratio)
+        self.readout = nn.Linear(emb_dim, num_tasks)
+    
+    def forward(self, x, edge_index, edge_attr):
+        node_representation = self.gnn(x, edge_index, edge_attr)
+        output = self.readout(node_representation)
+        
+        return output

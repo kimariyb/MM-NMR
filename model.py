@@ -13,7 +13,7 @@ class LNNP(LightningModule):
         super(LNNP, self).__init__()
 
         self.save_hyperparameters(config)
-        self.model = MultiViewRepresentation()
+        self.model = MultiViewRepresentation(embed_dim=288)
         self._reset_losses_dict()
 
     def configure_optimizers(self):

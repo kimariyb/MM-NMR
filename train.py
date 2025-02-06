@@ -9,7 +9,7 @@ from pytorch_lightning.strategies import SingleDeviceStrategy
 from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, ModelSummary
 
-from data import DataLoader
+from data import DataModule
 from model import LNNP
 from utils.Splitter import LoadFromFile, number, save_argparse
 
@@ -182,13 +182,13 @@ def get_args():
     )
     parser.add_argument(
         "--redirect",
-        action=argparse.BooleanOptionalAction,
+        action="store_true",
         default=False,
         help="Redirect stdout and stderr to log_dir/log",
     )
     parser.add_argument(
         "--accelerator",
-        default="gpu",
+        default="cpu",
         help='Supports passing different accelerator types ("cpu", "gpu", "tpu", "ipu", "auto")',
     )
     parser.add_argument(
@@ -255,7 +255,7 @@ def main():
     args = auto_exp(args)
 
     # Initialize data module
-    data = DataLoader(args)
+    data = DataModule(args)
     data.prepare_dataset()
 
     # Initialize model
