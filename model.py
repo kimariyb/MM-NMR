@@ -6,14 +6,15 @@ from torch.nn.functional import l1_loss
 
 from pytorch_lightning import LightningModule
 
-from network.Transformer import MultiViewRepresentation
-
+from network.Graph import GNN
+            
+        
 class LNNP(LightningModule):
     def __init__(self, config) -> None:
         super(LNNP, self).__init__()
 
         self.save_hyperparameters(config)
-        self.model = MultiViewRepresentation(embed_dim=288)
+        self.model = GNN()
         self._reset_losses_dict()
 
     def configure_optimizers(self):
@@ -54,8 +55,9 @@ class LNNP(LightningModule):
     def step(self, batch, loss_fn, stage):
         with torch.set_grad_enabled(stage == "train"):
             pred = self(batch)
-
-        label, mask = batch["label"], batch["mask"]
+            
+        label, mask = batch["y"], batch["mask"]
+                
         loss = loss_fn(pred, label[mask])
         self.losses[stage].append(loss.detach())
 
@@ -106,3 +108,4 @@ class LNNP(LightningModule):
             "val": [],
             "test": [],
         }
+

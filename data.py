@@ -1,4 +1,5 @@
 import os
+import torch
 
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import Subset
@@ -9,8 +10,8 @@ from loader.Hydrogen import HydrogenSpectraDataset
 from loader.Fluorine import FluorineShiftDataset
 from utils.Splitter import make_splits
 
-
-
+    
+    
 class DataModule(LightningDataModule):
     def __init__(self, hparams):
         super(DataModule, self).__init__()
@@ -71,7 +72,7 @@ class DataModule(LightningDataModule):
         dl = DataLoader(
             dataset=dataset,
             batch_size=batch_size,
-            shuffle=shuffle,
+            shuffle=shuffle,            
             num_workers=self.hparams["num_workers"],
             pin_memory=False,
             drop_last=False,
@@ -81,7 +82,6 @@ class DataModule(LightningDataModule):
             self._saved_dataloaders[stage] = dl
             
         return dl
-
 
 
 

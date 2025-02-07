@@ -80,8 +80,6 @@ class HydrogenSpectraDataset(InMemoryDataset):
 
             # 提取分子图
             graph = MolToGraph(mol)
-            finger_print = MolToFingerprints(mol)
-            smiles = Chem.MolToSmiles(mol, isomericSmiles=True)
 
             # 创建数据对象
             data = Data()
@@ -89,7 +87,6 @@ class HydrogenSpectraDataset(InMemoryDataset):
             data.edge_index = torch.from_numpy(graph["edge_index"]).to(torch.long)
             data.edge_attr = torch.from_numpy(graph["edge_feat"]).to(torch.long)
             data.x = torch.from_numpy(graph["node_feat"]).to(torch.long)
-            data.fingerprint = torch.tensor(finger_print, dtype=torch.float32)
             
             # add fluorine shifts
             shift = np.array([ast.literal_eval(atom.GetProp('shift')) for atom in mol.GetAtoms()])

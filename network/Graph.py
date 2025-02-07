@@ -2,9 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torch_geometric.nn import MessagePassing
+from torch_geometric.nn import MessagePassing, global_add_pool, global_max_pool, global_mean_pool
 
 from utils.Features import GetAtomFeaturesDim, GetBondFeaturesDim
+
 
 full_atom_feature_dims = GetAtomFeaturesDim()
 full_bond_feature_dims = GetBondFeaturesDim()
@@ -110,7 +111,15 @@ class GNN(nn.Module):
         for layer in range(num_layers):
             self.batch_norms.append(nn.BatchNorm1d(emb_dim))
             
-    def forward(self, x, edge_index, edge_attr):
+        self.readout = nn.Sequential(
+            nn.Linear(emb_dim, emb_dim), nn.PReLU(), nn.Dropout(self.drop_ratio),
+            nn.Linear(emb_dim , emb_dim), nn.PReLU(), nn.Dropout(self.drop_ratio),
+            nn.Linear(emb_dim, emb_dim), nn.PReLU(), nn.Dropout(self.drop_ratio),
+            nn.Linear(emb_dim, 1)
+        )
+                        
+    def forward(self, data):
+        x, edge_index, edge_attr, mask = data.x, data.edge_index, data.edge_attr, data.mask
         x = self.atom_encoder(x)
         
         h_list = [x]
@@ -135,25 +144,8 @@ class GNN(nn.Module):
             node_representation = torch.sum(torch.cat(h_list, dim=0), dim=0)[0]
         else:
             raise ValueError("Invalid JK type.")
+                
+        out = self.readout(node_representation)[:, 0]
         
-        return node_representation
+        return out[mask]
     
-
-class GNNModel(nn.Module):
-    def __init__(
-        self, 
-        num_layers: int = 6, 
-        emb_dim: int = 300, 
-        JK: str = "last", 
-        drop_ratio: float = 0.5, 
-        num_tasks: int = 1, 
-    ):
-        super(GNNModel, self).__init__()
-        self.gnn = GNN(num_layers, emb_dim, JK, drop_ratio)
-        self.readout = nn.Linear(emb_dim, num_tasks)
-    
-    def forward(self, x, edge_index, edge_attr):
-        node_representation = self.gnn(x, edge_index, edge_attr)
-        output = self.readout(node_representation)
-        
-        return output

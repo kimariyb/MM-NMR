@@ -7,12 +7,12 @@ from rdkit import RDLogger
 from tqdm import tqdm
 from torch_geometric.data import Data, InMemoryDataset
 
-from utils.Features import GernerateMask, MolToGraph, MolToFingerprints, SmilesToVector
+from utils.Features import GernerateMask, MolToGraph
 from utils.Extractor import ExtractCarbonShift
 
 # Disable rdkit warnings
 RDLogger.DisableLog('rdApp.*')
-
+        
 
 class CarbonSpectraDataset(InMemoryDataset):
     def __init__(
@@ -74,9 +74,6 @@ class CarbonSpectraDataset(InMemoryDataset):
 
             # 提取分子图
             graph = MolToGraph(mol)
-            finger_print = MolToFingerprints(mol)
-            smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
-            vector = SmilesToVector(smiles)
 
             # 创建数据对象
             data = Data()
@@ -84,16 +81,12 @@ class CarbonSpectraDataset(InMemoryDataset):
             data.edge_index = torch.from_numpy(graph["edge_index"]).to(torch.long)
             data.edge_attr = torch.from_numpy(graph["edge_feat"]).to(torch.long)
             data.x = torch.from_numpy(graph["node_feat"]).to(torch.long)
-            data.fingerprint = torch.tensor(finger_print, dtype=torch.float32)
             
             # add carbon shifts
             data.mask = torch.from_numpy(mask).to(torch.bool)
             data.y = torch.from_numpy(shift).to(torch.float)
 
-            # add SMILES and vector
-            data.vector = torch.from_numpy(vector).to(torch.long)
-            data.smiles = smiles
-
             data_list.append(data)
 
         torch.save(self.collate(data_list), self.processed_paths[0])
+

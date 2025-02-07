@@ -7,7 +7,6 @@ from rdkit.Chem import AllChem
 from utils.FingerPrint import GetPubChemFPs
 from typing import List
 
-from ogb.utils.features import atom_to_feature_vector
 
 # Disable rdkit warnings
 RDLogger.DisableLog('rdApp.*')
