@@ -1,151 +1,99 @@
+
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torch_geometric.nn import MessagePassing, global_add_pool, global_max_pool, global_mean_pool
-
-from utils.Features import GetAtomFeaturesDim, GetBondFeaturesDim
+from network.Basic import get_activation_function
 
 
-full_atom_feature_dims = GetAtomFeaturesDim()
-full_bond_feature_dims = GetBondFeaturesDim()
-
-
-class AtomEncoder(nn.Module):
-    def __init__(self, emb_dim):
-        super(AtomEncoder, self).__init__()
+class BatchGRUNet(nn.Module):
+    def __init__(self, hidden_size=300):
+        super(BatchGRUNet, self).__init__()
+        self.hidden_size = hidden_size
+        self.gru = nn.GRU(hidden_size, hidden_size, bidirectional=True, batch_first=True)
+        self.bias = nn.Parameter(torch.Tensor(self.hidden_size))
+        self.bias.data.uniform_(-1.0 / math.sqrt(self.hidden_size), 1.0 / math.sqrt(self.hidden_size))
         
-        self.atom_embedding_list = nn.ModuleList()
+    def forward(self, node, a_scope):
+        hidden = node
+        message = F.relu(node + self.bias)
+        max_atom_len = max([a_size for a_start, a_size in a_scope])
+        # padding
+        message_list = []
+        hidden_list = []
+        for i, (a_start, a_size) in enumerate(a_scope):
+            if a_size == 0:
+                assert 0
+            cur_message = message.narrow(0, a_start, a_size)
+            cur_hidden = hidden.narrow(0, a_start, a_size)
+            hidden_list.append(cur_hidden.max(0)[0].unsqueeze(0).unsqueeze(0))
+            
+            cur_message = nn.ZeroPad2d((0, 0, 0, max_atom_len - cur_message.shape[0]))(cur_message)
+            message_list.append(cur_message.unsqueeze(0))
         
-        for dim in full_atom_feature_dims:
-            emb = nn.Embedding(dim, emb_dim)
-            nn.init.xavier_uniform_(emb.weight.data)
-            self.atom_embedding_list.append(emb)
-    
-    def forward(self, x):
-        atom_embedding = 0
-        start_idx = 0
+        message_list = torch.cat(message_list, dim=0)
+        hidden_list = torch.cat(hidden_list, dim=1)
+        hidden_list = hidden_list.repeat(2, 2, 1)
+        cur_message, cur_hidden = self.gru(message_list, hidden_list)
         
-        for i, dim in enumerate(full_atom_feature_dims):
-            feat = x[:, start_idx:start_idx + dim]
-            feat_idx = torch.argmax(feat, dim=1)
-            atom_embedding += self.atom_embedding_list[i](feat_idx)
-            start_idx += dim
+        # unpadding
+        cur_message_unpadding = []
+        for i, (a_start, a_size) in enumerate(a_scope):
+            cur_message_unpadding.append(cur_message[i, :a_size].view(-1, 2 * self.hidden_size))
+        cur_message_unpadding = torch.cat(cur_message_unpadding, dim=0)
         
-        return atom_embedding
-
-
-class BondEncoder(nn.Module):
-    def __init__(self, emb_dim):
-        super(BondEncoder, self).__init__()
+        message = torch.cat([torch.cat([message.narrow(0, 0, 1), message.narrow(0, 0, 1)], 1),
+                             cur_message_unpadding], 0)
         
-        self.bond_embedding_list = nn.ModuleList()
-        
-        for dim in full_bond_feature_dims:
-            emb = nn.Embedding(dim, emb_dim)
-            nn.init.xavier_uniform_(emb.weight.data)
-            self.bond_embedding_list.append(emb)
-    
-    def forward(self, edge_attr):
-        edge_embedding = 0
-        start_idx = 0
-        
-        for i, dim in enumerate(full_bond_feature_dims):
-            feat = edge_attr[:, start_idx:start_idx + dim]
-            feat_idx = torch.argmax(feat, dim=1)
-            edge_embedding += self.bond_embedding_list[i](feat_idx)
-            start_idx += dim
-        
-        return edge_embedding
+        return message
     
 
-class GINConv(MessagePassing):
-    def __init__(self, emb_dim, aggr="add"):
-        super(GINConv, self).__init__(aggr=aggr)
-        self.mlp = nn.Sequential(
-            nn.Linear(emb_dim, 2 * emb_dim), 
-            nn.BatchNorm1d(2 * emb_dim), 
-            nn.ReLU(),
-            nn.Linear(2*emb_dim, emb_dim)
-        )
-
-        self.eps = nn.Parameter(torch.Tensor([0]))
-        
-        self.bond_encoder = BondEncoder(emb_dim)
-    
-    def forward(self, x, edge_index, edge_attr):
-        edge_embedding = self.bond_encoder(edge_attr)
-        out = self.mlp((1 + self.eps) * x + self.propagate(edge_index, x=x, edge_attr=edge_embedding))
-        return out
-    
-    def message(self, x_j, edge_attr):
-        return F.relu(x_j + edge_attr)
-    
-    def update(self, aggr_out):
-        return aggr_out
-    
-
-class GNN(nn.Module):
+class MPNNEncoder(nn.Module):
     def __init__(
         self, 
-        num_layers: int = 6, 
-        emb_dim: int = 300, 
-        JK: str = "last", 
-        drop_ratio: float = 0.5, 
+        atom_feature_size, 
+        bond_feature_size, 
+        hidden_size, 
+        bias,
+        depth,
+        dropout,
+        activation,
+        device
     ):
-        if num_layers < 2:
-            raise ValueError("Number of GNN layers must be greater than 1.")
+        super(MPNNEncoder, self).__init__()
+        self.atom_feature_size = atom_feature_size
+        self.bond_feature_size = bond_feature_size
+        self.hidden_size = hidden_size
+        self.bias = bias
+        self.depth = depth
+        self.dropout = dropout
+        self.activation = activation
+        self.device = device
         
-        super(GNN, self).__init__()
-        self.num_layers = num_layers
-        self.drop_ratio = drop_ratio
-        self.JK = JK
+        # Dropout layer
+        self.dropout_layer = nn.Dropout(p=self.dropout).to(self.device)
         
-        self.atom_encoder = AtomEncoder(emb_dim)
+        # Activation function
+        self.act = get_activation_function(self.activation).to(self.device)
         
-        self.gnns = nn.ModuleList()
-        for layer in range(num_layers):
-            self.gnns.append(GINConv(emb_dim, aggr="add"))
+        # Input layer
+        self.W_i_atom = nn.Linear(self.atom_feature_size, self.hidden_size, bias=self.bias).to(self.device)
+        self.W_i_bond = nn.Linear(self.bond_feature_size, self.hidden_size, bias=self.bias).to(self.device)
         
-        self.batch_norms = nn.ModuleList()
-        for layer in range(num_layers):
-            self.batch_norms.append(nn.BatchNorm1d(emb_dim))
+        w_h_input_size_atom = self.hidden_size + self.bond_feature_size
+        self.W_h_atom = nn.Linear(w_h_input_size_atom, self.hidden_size, bias=self.bias)
+        
+        w_h_input_size_bond = self.hidden_size
+        
+        for dep in range(self.depth - 1):
+            self.modules[f'W_h_{dep}'] = nn.Linear(w_h_input_size_bond, self.hidden_size, bias=self.bias)
             
-        self.readout = nn.Sequential(
-            nn.Linear(emb_dim, emb_dim), nn.PReLU(), nn.Dropout(self.drop_ratio),
-            nn.Linear(emb_dim , emb_dim), nn.PReLU(), nn.Dropout(self.drop_ratio),
-            nn.Linear(emb_dim, emb_dim), nn.PReLU(), nn.Dropout(self.drop_ratio),
-            nn.Linear(emb_dim, 1)
-        )
-                        
-    def forward(self, data):
-        x, edge_index, edge_attr, mask = data.x, data.edge_index, data.edge_attr, data.mask
-        x = self.atom_encoder(x)
+        self.W_o = nn.Linear((self.hidden_size) * 2, self.hidden_size, bias=self.bias).to(self.device)
         
-        h_list = [x]
-        for layer in range(self.num_layers):
-            h = self.gnns[layer](h_list[layer], edge_index, edge_attr)
-            h = self.batch_norms[layer](h)
-            if layer == self.num_layers - 1:
-                h = F.dropout(h, p=self.drop_ratio, training=self.training)
-            else:
-                h = F.dropout(F.relu(h), p=self.drop_ratio, training=self.training)
-            h_list.append(h)
-        
-        if self.JK == "concat":
-            node_representation = torch.cat(h_list, dim=1)
-        elif self.JK == "last":
-            node_representation = h_list[-1]
-        elif self.JK == "max":
-            h_list = [h.unsqueeze_(0) for h in h_list]
-            node_representation = torch.max(torch.cat(h_list, dim=0), dim=0)[0]
-        elif self.JK == "sum":
-            h_list = [h.unsqueeze_(0) for h in h_list]
-            node_representation = torch.sum(torch.cat(h_list, dim=0), dim=0)[0]
-        else:
-            raise ValueError("Invalid JK type.")
-                
-        out = self.readout(node_representation)[:, 0]
-        
-        return out[mask]
-    
+        self.gru = BatchGRUNet(hidden_size=self.hidden_size).to(self.device)
+
+        self.lr = nn.Linear(self.hidden_size * 3, self.hidden_size, bias=self.bias).to(self.device)
+
+    def forward(self, mol_graph): ...
+

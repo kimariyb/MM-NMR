@@ -208,7 +208,7 @@ if __name__ == "__main__":
     print(data.fingerprint.shape)
     print(data.vector.shape)
         
-    from utils.Features import GetAtomFeaturesDim, GetBondFeaturesDim
+    from utils.Molecular import GetAtomFeaturesDim, GetBondFeaturesDim
     print(GetAtomFeaturesDim())
     print(GetBondFeaturesDim())
     

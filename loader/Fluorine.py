@@ -9,7 +9,7 @@ from rdkit import RDLogger
 from tqdm import tqdm
 from torch_geometric.data import Data, InMemoryDataset
 
-from utils.Features import MolToGraph, MolToFingerprints
+from utils.Molecular import MolToGraph, MolToFingerprints
 from utils.Extractor import ExtractFluorineShift
 
 # Disable rdkit warnings

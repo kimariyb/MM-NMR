@@ -1,6 +1,5 @@
+import ast
 import numpy as np
-
-from rdkit import Chem
 
 
 def ExtractCarbonShift(mol):
@@ -120,3 +119,38 @@ def ExtractFluorineShift(mol):
     
     return atom_shifts
 
+
+def GernerateMask(mol, shift_dict):
+    r"""
+    生成 13C、19F 等杂核化学位移掩码
+    """
+    for j, atom in enumerate(mol.GetAtoms()):
+        if j in shift_dict:
+            atom.SetProp('shift', str(shift_dict[j]))
+            atom.SetBoolProp('mask', True)
+        else:
+            atom.SetProp( 'shift', str(0))
+            atom.SetBoolProp('mask', False)
+
+    mask = np.array([atom.GetBoolProp('mask') for atom in mol.GetAtoms()])
+    shift = np.array([ast.literal_eval(atom.GetProp('shift')) for atom in mol.GetAtoms()])
+    
+    return mask, shift
+
+
+def GernerateHydrogenMask(mol, shift_dict):
+    r"""
+    生成 1H 化学位移掩码
+    """
+    for j, atom in enumerate(mol.GetAtoms()):
+        if j in shift_dict:
+            atom.SetProp('shift', str(shift_dict[j]))
+            atom.SetBoolProp('mask', True)
+        else:
+            atom.SetProp('shift', str([0]))             
+            atom.SetBoolProp('mask', False)
+
+    mask = np.array([atom.GetBoolProp('mask') for atom in mol.GetAtoms()])
+    shift = np.array([ast.literal_eval(atom.GetProp('shift')) for atom in mol.GetAtoms()])
+    
+    return mask, shift

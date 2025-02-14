@@ -7,7 +7,7 @@ from rdkit import RDLogger
 from tqdm import tqdm
 from torch_geometric.data import Data, InMemoryDataset
 
-from utils.Features import GernerateMask, MolToGraph
+from utils.Molecular import GernerateMask, MolToGraph
 from utils.Extractor import ExtractCarbonShift
 
 # Disable rdkit warnings
