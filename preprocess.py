@@ -1,11 +1,8 @@
 import re
+import argparse
 
 from rdkit import Chem, RDLogger
 from tqdm import tqdm
-
-from loader.Carbon import CarbonSpectraDataset
-from loader.Hydrogen import HydrogenSpectraDataset
-from loader.Fluorine import FluorineShiftDataset
 
 
 RDLogger.DisableLog('rdApp.*')
@@ -34,7 +31,7 @@ def export_file(suppl: list, output_path: str):
    
 
 def create_hydrogen_dataset(data_path: str):
-    suppl = collect(data_path)
+    suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
 
     dataset = []
         
@@ -71,7 +68,7 @@ def create_carbon_dataset(data_path: str):
     data_path : str
         The path to the sdf file containing the carbon spectra.
     """
-    suppl = collect(data_path)
+    suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
 
     dataset = []
         
@@ -79,6 +76,14 @@ def create_carbon_dataset(data_path: str):
         # Check if the molecule is valid
         if mol is None:
             print(f"Invalid molecule found in {data_path}")
+            continue
+        # Only consider molecules with less than 50 atoms
+        if mol.GetNumAtoms() >= 40:
+            print(f"Invalid number of atoms found in {data_path}")
+            continue
+        # Only consider molecules with H, C, N, O, F, Si, P, S, Cl, Br, and I atoms
+        if not all(atom.GetAtomicNum() in [1, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53] for atom in mol.GetAtoms()):
+            print(f"Invalid element found in {data_path}")
             continue
         
         # get the properties of the molecule
@@ -107,8 +112,8 @@ def create_fluorine_dataset(data_path: str):
     data_path : str
         The path to the sdf file containing the fluorin spectra.
     """
-    suppl = collect(data_path)
-    
+    suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
+
     dataset = []
         
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
@@ -131,7 +136,7 @@ def create_fluorine_dataset(data_path: str):
     print(f"Valid molecules found: {len(dataset)}")
         
     # export the dataset to a sdf file
-    export_file(dataset, output_path='fluorin_dataset.sdf')
+    export_file(dataset, output_path='fluorine_dataset.sdf')
 
 
 def create_dataset(data_path: str, element: str = 'carbon'):
@@ -155,64 +160,10 @@ def create_dataset(data_path: str, element: str = 'carbon'):
     else:
         raise ValueError("Invalid element specified. Options: 'carbon', 'hydrogen', 'fluorine'")
 
-
-def collect(data_path: str):
-    r"""
-    Only H, B, C, O, N, F, Si, P, S, Cl, Br, I are collected.
-
-    Parameters
-    ----------
-    data_path : str
-        The path to the sdf file containing the spectra.
-
-    Returns
-    -------
-    list of Chem.rdchem.Mol
-        The list of selected atoms.
-    """
-    # Define the set of target elements
-    target_elements = {"H", "B", "C", "O", "N", "F", "Si", "P", "S", "Cl", "Br", "I"}
-
-    suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
-
-    # Initialize the list to store valid molecules
-    valid_molecules = []
-
-    # Iterate over the molecules in the SDF file
-    for mol in tqdm(suppl, desc="Processing molecules", total=len(suppl)):
-        # Check if the molecule is valid
-        if mol is None:
-            print(f"Invalid molecule found in {data_path}")
-            continue
-
-        # Get the set of elements in the molecule
-        elements_in_mol = {atom.GetSymbol() for atom in mol.GetAtoms()}
-
-        # Check if the molecule contains only the target elements
-        if elements_in_mol.issubset(target_elements):
-            valid_molecules.append(mol)
-
-    return valid_molecules
-    
-
 if __name__ == "__main__":
-    # data_path = './data/nmrshiftdb2withsignals.sd'
-    # create_dataset(data_path=data_path, element='carbon')
+    args = argparse.ArgumentParser()
+    args.add_argument('--element', '-e', type=str, required=True, help='The element to create the dataset for. Options: "carbon", "hydrogen", "fluorine"')
     
-    dataset = CarbonSpectraDataset(root='./data')
-    data = dataset[0]
+    args = args.parse_args()
     
-    print(data.num_nodes)
-    print(data.x.shape)
-    print(data.edge_attr.shape)
-    print(data.fingerprint.shape)
-    print(data.vector.shape)
-        
-    from utils.Molecular import GetAtomFeaturesDim, GetBondFeaturesDim
-    print(GetAtomFeaturesDim())
-    print(GetBondFeaturesDim())
-    
-    from network.Transformer import MultiViewRepresentation
-    
-    model = MultiViewRepresentation(embed_dim=128)
-    out = model(data)
+    create_dataset(data_path='./data/nmrshiftdb2withsignals.sd', element=args.element)
