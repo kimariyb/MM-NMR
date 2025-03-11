@@ -1,169 +1,61 @@
-import re
-import argparse
+import os
 
-from rdkit import Chem, RDLogger
 from tqdm import tqdm
-
+from rdkit import Chem, RDLogger
+from utils.smiles import split_smiles
+from utils.vocab import WordVocab   
 
 RDLogger.DisableLog('rdApp.*')
 
 
-def export_file(suppl: list, output_path: str):
-    r"""
-    Exports a list of RDKit molecules to a file.
-
-    Parameters
-    ----------
-    suppl : list of Chem.rdchem.Mol
-        The list of RDKit molecules to export.
-    output_path : str
-        The path to the output file.
-    """
-    writer = Chem.SDWriter(output_path)
+def generate_corpus(data_path, save_path):
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f'Data file not found: {data_path}')
+    if os.path.exists(save_path):
+        return True
     
-    for mol in suppl:
-        props = mol.GetPropsAsDict()
-        writer.SetProps(list(props.keys()))  
-        
-        writer.write(mol)
-        
-    writer.close()
-   
-
-def create_hydrogen_dataset(data_path: str):
     suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
-
-    dataset = []
-        
-    for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
-        # Check if the molecule is valid
+    smiles_list = []
+    
+    for mol in tqdm(suppl, desc='Generating corpus'):
         if mol is None:
-            print(f"Invalid molecule found in {data_path}")
             continue
         
-        # get the properties of the molecule
-        prop_names = mol.GetPropNames(includePrivate=False, includeComputed=False)
-        has_spectrum = False
-        
-        for prop in prop_names:
-            pattern = r"^Spectrum 1H \d+$"
-            if bool(re.match(pattern, prop)):
-                has_spectrum = True
-                break
-        
-        if has_spectrum:
-            dataset.append(mol)
-        
-    print(f"Valid molecules found: {len(dataset)}")
+        smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
+        smiles_list.append(smiles)
     
-    export_file(dataset, output_path='hydrogen_dataset.sdf')
-        
+    with open(save_path, 'w', encoding='utf-8') as f:
+        for smiles in tqdm(smiles_list, desc='Writing corpus'):
+            f.write(split_smiles(smiles) + '\n')
 
-def create_carbon_dataset(data_path: str):
-    r"""
-    Creates a dataset of carbon spectra from a given sdf file.
+    return False
+
+
+def generate_vocab(corpus_path, save_path, vocab_size=None, min_freq=1):
+    if not os.path.exists(corpus_path):
+        raise FileNotFoundError(f'Corpus file not found: {corpus_path}')
+    if os.path.exists(save_path):
+        return True
     
-    Parameters
-    ----------
-    data_path : str
-        The path to the sdf file containing the carbon spectra.
-    """
-    suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
-
-    dataset = []
-        
-    for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
-        # Check if the molecule is valid
-        if mol is None:
-            print(f"Invalid molecule found in {data_path}")
-            continue
-        # Only consider molecules with less than 50 atoms
-        if mol.GetNumAtoms() >= 40:
-            print(f"Invalid number of atoms found in {data_path}")
-            continue
-        # Only consider molecules with H, C, N, O, F, Si, P, S, Cl, Br, and I atoms
-        if not all(atom.GetAtomicNum() in [1, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53] for atom in mol.GetAtoms()):
-            print(f"Invalid element found in {data_path}")
-            continue
-        
-        # get the properties of the molecule
-        prop_names = mol.GetPropNames(includePrivate=False, includeComputed=False)
-        # check if the molecule has a carbon spectrum
-        for prop in prop_names:
-            pattern = r"^Spectrum 13C \d+$"
-            if bool(re.match(pattern, prop)):
-                dataset.append(mol)
-                break
-            else:
-                continue
-        
-    print(f"Valid molecules found: {len(dataset)}")
-        
-    # export the dataset to a sdf file
-    export_file(dataset, output_path='carbon_dataset.sdf')
-
-
-def create_fluorine_dataset(data_path: str):
-    r"""
-    Creates a dataset of fluorine spectra from a given sdf file.
+    with open(corpus_path, 'r', encoding='utf-8') as f:
+        vocab = WordVocab(f, max_size=vocab_size, min_freq=min_freq)
     
-    Parameters
-    ----------
-    data_path : str
-        The path to the sdf file containing the fluorin spectra.
-    """
-    suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
-
-    dataset = []
-        
-    for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
-        # Check if the molecule is valid
-        if mol is None:
-            print(f"Invalid molecule found in {data_path}")
-            continue
-        
-        # get the properties of the molecule
-        prop_names = mol.GetPropNames(includePrivate=False, includeComputed=False)
-        # check if the molecule has a carbon spectrum
-        for prop in prop_names:
-            pattern = r"^Spectrum 19F \d+$"
-            if bool(re.match(pattern, prop)):
-                dataset.append(mol)
-                break
-            else:
-                continue
-        
-    print(f"Valid molecules found: {len(dataset)}")
-        
-    # export the dataset to a sdf file
-    export_file(dataset, output_path='fluorine_dataset.sdf')
+    vocab.save_vocab(save_path)
+    return False
 
 
-def create_dataset(data_path: str, element: str = 'carbon'):
-    r"""
-    Creates a dataset of spectra from a given sdf file.
-    
-    Parameters
-    ----------
-    data_path : str
-        The path to the sdf file containing the spectra.
-    element : str
-        The element to create the dataset for.
-        Options: 'carbon', 'hydrogen', 'fluorine'
-    """
-    if element == 'carbon':
-        create_carbon_dataset(data_path=data_path)
-    elif element == 'hydrogen':
-        create_hydrogen_dataset(data_path=data_path)
-    elif element == 'fluorine':
-        create_fluorine_dataset(data_path=data_path)
+if __name__ == '__main__':
+    # First, generate the corpus file
+    if generate_corpus('./data/carbon/raw/carbon_dataset.sdf', './data/carbon/processed/corpus.txt'):
+        print('Corpus file already exists. Skipping corpus generation.')
+        # Then, preprocess the corpus file
+        if generate_vocab('./data/carbon/processed/corpus.txt', './data/carbon/processed/vocab.pkl', vocab_size=None, min_freq=1):
+            print('Vocab file already exists. Skipping vocab generation.')
+        else:
+            print('Vocab file generated successfully.')
     else:
-        raise ValueError("Invalid element specified. Options: 'carbon', 'hydrogen', 'fluorine'")
+        print('Corpus file generated successfully.')
+        
 
-if __name__ == "__main__":
-    args = argparse.ArgumentParser()
-    args.add_argument('--element', '-e', type=str, required=True, help='The element to create the dataset for. Options: "carbon", "hydrogen", "fluorine"')
-    
-    args = args.parse_args()
-    
-    create_dataset(data_path='./data/nmrshiftdb2withsignals.sd', element=args.element)
+
+    # 

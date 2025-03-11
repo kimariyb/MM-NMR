@@ -11,10 +11,10 @@ class CMPNNLayer(nn.Module):
         # 边特征更新网络（融合原子-键联合特征）
         self.edge_gru = nn.GRUCell((2 * node_dim) + edge_dim, edge_dim)
         
-        # 原子特征更新网络（保留原文GRU设计）
+        # 原子特征更新网络
         self.atom_gru = nn.GRUCell(hidden_dim, node_dim)
         
-        # 消息转换网络（增加边权重机制）
+        # 消息转换网络
         self.msg_booster = nn.Sequential(
             nn.Linear((2 * node_dim) + edge_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
@@ -50,15 +50,15 @@ class CMPNNLayer(nn.Module):
         return update_nodes, update_edges
             
     def edge_update_func(self, edges):
-        # 边特征更新函数，保留原文设计
+        # 边特征更新函数
         return {'msg': torch.cat([edges.src['h'], edges.dst['h'], edges.data['e']], dim=1)}
 
     def message_func(self, edges):
-        # 消息传递函数，结合消息转换网络
+        # 消息传递函数
         return {'m': torch.cat([edges.src['h'], edges.data['e']], dim=1)}
 
     def reduce_func(self, nodes):
-        # 消息聚合函数，保留原文设计
+        # 消息聚合函数
         return {'agg': torch.cat([
             nodes.mailbox['m'].sum(dim=1),
             nodes.mailbox['m'].max(dim=1)[0]
@@ -84,7 +84,6 @@ class CMPNN(nn.Module):
             CMPNNLayer(node_dim, edge_dim, hidden_dim)
             for _ in range(num_layers)
         ])
-        
         
     def forward(self, g: dgl.DGLGraph):
         h = g.ndata['h']

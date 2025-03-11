@@ -8,7 +8,6 @@ from rdkit import Chem, RDLogger
 from tqdm import tqdm
 from torch.utils.data import Dataset
 
-from ogb.utils.features import atom_to_feature_vector, bond_to_feature_vector
 
 RDLogger.DisableLog('rdApp.*')
 
@@ -44,47 +43,8 @@ class DatasetBuilder:
         return os.path.join(self.processed_dir, self.processed_file_names)
 
     def mol2graph(self, mol):
-        # atoms
-        atom_features_list = []
-        for atom in mol.GetAtoms():
-            atom_features_list.append(atom_to_feature_vector(atom))
+        raise NotImplementedError("DatasetBuilder.mol2graph() is not implemented.")
 
-        x = np.array(atom_features_list, dtype=np.int64)
-
-        coords = mol.GetConformer().GetPositions()
-        z = [atom.GetAtomicNum() for atom in mol.GetAtoms()]
-
-        edge_features_list = []
-        src_list = []
-        dst_list = []
-        if len(mol.GetBonds()) > 0:  # mol has bonds
-            for bond in mol.GetBonds():
-                i = bond.GetBeginAtomIdx()
-                j = bond.GetEndAtomIdx()
-
-                edge_feature = bond_to_feature_vector(bond)
-
-                # add edges in both directions
-                src_list.append(i)
-                src_list.append(j)
-                dst_list.append(j)
-                dst_list.append(i)
-                edge_features_list.append(edge_feature)
-                edge_features_list.append(edge_feature)
-
-        else:  # mol has no bonds
-            return None
-
-        graph = dgl.graph((src_list, dst_list), num_nodes=len(x))
-        edge_attr = np.array(edge_features_list, dtype=np.int64)
-
-        graph.ndata['feat'] = torch.LongTensor(x)
-        graph.edata['feat'] = torch.LongTensor(edge_attr)
-        graph.ndata['pos'] = torch.FloatTensor(coords)
-        graph.ndata['z'] = torch.LongTensor(z)
-
-        return graph
-    
 
 class CarbonDatasetBuilder(DatasetBuilder):
     def __init__(self, root):
@@ -116,12 +76,13 @@ class CarbonDatasetBuilder(DatasetBuilder):
         # load the processed data
         data = torch.load(self.processed_paths)
         
-        graph_list = data['graph_list']
+        atom_bond_graphs_list = data['atom_bond_graphs_list']
+        bond_angle_graphs_list =  data['bond_angle_graphs_list']
         label_list = data['label_list']
         mask_list = data['mask_list']
         
         # create the dataset
-        dataset = GraphDataset(graph_list, label_list, mask_list)
+        dataset = GraphDataset(atom_bond_graphs_list, bond_angle_graphs_list, label_list, mask_list)
         
         # logging the progress
         print("The carbon dataset has been built.")
@@ -140,7 +101,8 @@ class CarbonDatasetBuilder(DatasetBuilder):
         print("The raw carbon data is being processed.")
         
         # initialize the lists
-        graph_list = []
+        atom_bond_graphs_list = []
+        bond_angle_graphs_list = []
         label_list = []
         mask_list = []
         
@@ -149,8 +111,8 @@ class CarbonDatasetBuilder(DatasetBuilder):
                 continue
             
             # Get graph data
-            graph = self.mol2graph(mol) 
-            if graph is None:
+            atom_bond_graph, bond_angle_graph = self.mol2graph(mol) 
+            if atom_bond_graph is None or bond_angle_graph is None:
                 continue
 
             # get the carbon shift
@@ -171,16 +133,19 @@ class CarbonDatasetBuilder(DatasetBuilder):
             shift = np.array([ast.literal_eval(atom.GetProp('shift')) for atom in mol.GetAtoms()])
             mask = np.array([atom.GetBoolProp('mask') for atom in mol.GetAtoms()])
 
-            if shift.shape[0] != mask.shape[0] != graph.number_of_nodes():
-                continue
-            
             # save the data
-            graph_list.append(graph)
+            atom_bond_graphs_list.append(atom_bond_graph)
+            bond_angle_graphs_list.append(bond_angle_graph)
             label_list.append(shift)
             mask_list.append(mask)
         
-        # save the processed data
-        data = {'graph_list': graph_list, 'label_list': label_list,'mask_list': mask_list}
+        data = {
+            'atom_bond_graphs_list': atom_bond_graphs_list, 
+            'bond_angle_graphs_list': bond_angle_graphs_list, 
+            'label_list': label_list,
+            'mask_list': mask_list
+        }
+        
         os.makedirs(self.processed_dir, exist_ok=True)
         
         # save the dictionary
@@ -188,6 +153,9 @@ class CarbonDatasetBuilder(DatasetBuilder):
         
         # logging the progress
         print("The raw carbon data has been processed and saved.")
+        
+    def mol2graph(self, mol):
+        return mol_to_geognn_dgl_graph(mol)
 
 
     def get_carbon_shift(self, mol: Chem.rdchem.Mol) -> dict:
@@ -229,3 +197,5 @@ class GraphDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.atom_bond_graphs[idx], self.bond_angle_graphs[idx], self.labels[idx], self.masks[idx]
+    
+
