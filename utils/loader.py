@@ -8,6 +8,8 @@ from rdkit import Chem, RDLogger
 from tqdm import tqdm
 from torch.utils.data import Dataset
 
+from utils.featurizer import mol_to_geognn_data, data_to_dgl_graph
+
 
 RDLogger.DisableLog('rdApp.*')
 
@@ -41,9 +43,6 @@ class DatasetBuilder:
     @property
     def processed_paths(self):
         return os.path.join(self.processed_dir, self.processed_file_names)
-
-    def mol2graph(self, mol):
-        raise NotImplementedError("DatasetBuilder.mol2graph() is not implemented.")
 
 
 class CarbonDatasetBuilder(DatasetBuilder):
@@ -111,7 +110,7 @@ class CarbonDatasetBuilder(DatasetBuilder):
                 continue
             
             # Get graph data
-            atom_bond_graph, bond_angle_graph = self.mol2graph(mol) 
+            atom_bond_graph, bond_angle_graph = data_to_dgl_graph(mol_to_geognn_data(mol))
             if atom_bond_graph is None or bond_angle_graph is None:
                 continue
 
@@ -152,11 +151,7 @@ class CarbonDatasetBuilder(DatasetBuilder):
         torch.save(data, self.processed_paths)
         
         # logging the progress
-        print("The raw carbon data has been processed and saved.")
-        
-    def mol2graph(self, mol):
-        return mol_to_geognn_dgl_graph(mol)
-
+        print("The raw carbon data has been processed and saved.")       
 
     def get_carbon_shift(self, mol: Chem.rdchem.Mol) -> dict:
         r"""

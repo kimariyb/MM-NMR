@@ -3,7 +3,8 @@ import os
 from tqdm import tqdm
 from rdkit import Chem, RDLogger
 from utils.smiles import split_smiles
-from utils.vocab import WordVocab   
+from utils.vocab import WordVocab 
+from utils.loader import CarbonDatasetBuilder, GraphDataset 
 
 RDLogger.DisableLog('rdApp.*')
 
@@ -44,6 +45,7 @@ def generate_vocab(corpus_path, save_path, vocab_size=None, min_freq=1):
     return False
 
 
+
 if __name__ == '__main__':
     # First, generate the corpus file
     if generate_corpus('./data/carbon/raw/carbon_dataset.sdf', './data/carbon/processed/corpus.txt'):
@@ -53,9 +55,11 @@ if __name__ == '__main__':
             print('Vocab file already exists. Skipping vocab generation.')
         else:
             print('Vocab file generated successfully.')
+        # Finally, build the dataset
+        dataset_builder = CarbonDatasetBuilder('./data/carbon/')
+        dataset = dataset_builder.build()
+        print(f'Dataset built successfully. Total number of samples: {len(dataset)}.')
     else:
         print('Corpus file generated successfully.')
         
 
-
-    # 
