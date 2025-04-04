@@ -1,6 +1,6 @@
-from utils.loader import CarbonDatasetBuilder
+from data import carbon
 
 if __name__ == '__main__':
-    dataset_builder = CarbonDatasetBuilder('data/carbon')
-    dataset = dataset_builder.build()
-    print(len(dataset))
+    dataset = carbon.CarbonDataset('./data/dataset/carbon')
+    data = dataset[0]
+    print(data)

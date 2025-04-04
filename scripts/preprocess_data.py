@@ -166,4 +166,4 @@ if __name__ == "__main__":
     
     args = args.parse_args()
     
-    create_dataset(data_path='./data/nmrshiftdb2withsignals.sd', element=args.element)
+    create_dataset(data_path='d:/project/MM-NMR/data/dataset/nmrshiftdb2withsignals.sd', element=args.element)
