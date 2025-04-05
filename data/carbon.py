@@ -6,7 +6,7 @@ from tqdm import tqdm
 from rdkit import Chem
 from torch_geometric.data import Data, InMemoryDataset
 
-from data.features import mol2graph
+from data.features import mol2graph, get_geometries
 
 
 class CarbonDataset(InMemoryDataset):
@@ -29,13 +29,20 @@ class CarbonDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return 'carbon_dataset.pt'
+        return 'processed_data.pt'
     
     def process(self):
         data_list = []
         suppl = Chem.SDMolSupplier(os.path.join(self.raw_dir, self.raw_file_names))
         
+        count = 0
+        
         for mol in tqdm(suppl, desc="Processing carbon dataset", unit="mol", ncols=100, total=len(suppl)):
+            # test 
+            if count > 100:
+                break
+            count += 1
+            
             if mol is None:
                 continue
             
@@ -52,19 +59,11 @@ class CarbonDataset(InMemoryDataset):
                 else:
                     atom.SetProp('shift', str(0))
                     atom.SetBoolProp('mask', False)
-                    
-            # create the shift tensor and mask tensor
-            shift_tensor = torch.zeros(mol.GetNumAtoms(), 1)
-            mask_tensor = torch.zeros(mol.GetNumAtoms(), 1)
-            
-            for i, atom in enumerate(mol.GetAtoms()):
-                shift_tensor[i] = float(atom.GetProp('shift'))
-                mask_tensor[i] = float(atom.GetBoolProp('mask'))
                 
             # create graph
             graph = mol2graph(mol)
             if graph is None:
-                continue
+                continue 
             
             data = Data()
             data.smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
@@ -72,8 +71,39 @@ class CarbonDataset(InMemoryDataset):
             data.x = torch.tensor(graph['node_feat'], dtype=torch.float)
             data.edge_index = torch.tensor(graph['edge_index'], dtype=torch.long)
             data.edge_attr = torch.tensor(graph['edge_feat'], dtype=torch.float)
-            data.y = shift_tensor.reshape(-1)
-            data.mask = mask_tensor.reshape(-1)
+            
+            # create the shift tensor and mask tensor
+            shift_tensor = torch.zeros(mol.GetNumAtoms(), 2)
+            mask_tensor = torch.zeros(mol.GetNumAtoms(), 1)
+            
+            # get shift and mask tensors
+            for i, atom in enumerate(mol.GetAtoms()):
+                # shift tensor is a tensor of shape (num_atoms, 2)
+                # where the first column is the atom index and the second column is the shift value
+                shift_tensor[i, 0] = i
+                shift_tensor[i, 1] = float(atom.GetProp('shift'))
+                
+                # mask tensor is a tensor of shape (num_atoms, 1)
+                mask_tensor[i] = float(atom.GetBoolProp('mask'))
+                
+            data.y = shift_tensor.clone().detach().to(torch.float)
+            data.mask = mask_tensor.clone().detach().to(torch.bool).reshape(-1)
+            
+            # get geometries
+            coord = get_geometries(mol)
+            if coord is None:
+                continue
+            
+            data.pos = torch.tensor(coord, dtype=torch.float)
+            data.z = torch.tensor([atom.GetAtomicNum() for atom in mol.GetAtoms()], dtype=torch.long)
+            
+            # apply pre-transform
+            if self.pre_transform is not None:
+                data = self.pre_transform(data)
+            
+            # apply pre-filter
+            if self.pre_filter is not None and not self.pre_filter(data):
+                continue
             
             data_list.append(data)
             
@@ -118,5 +148,7 @@ class CarbonDataset(InMemoryDataset):
                 atom_shifts[j] = np.median(atom_shifts[j])
         
         return atom_shifts
+
+    
 
         
