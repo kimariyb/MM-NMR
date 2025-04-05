@@ -463,4 +463,4 @@ class SphereNet(nn.Module):
             v = update_v(e, i)
             u = update_u(u, v, batch) # u += scatter(v, batch, dim=0)
 
-        return u
+        return u, v
