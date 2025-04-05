@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import sympy as sym
 
-from encoders.geometry_utils import bessel_basis, real_sph_harm, swish, xyz_to_dat
+from models.encoders.utils import bessel_basis, real_sph_harm, swish, xyz2data
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -448,8 +448,8 @@ class SphereNet(nn.Module):
             pos.requires_grad_()
             
         edge_index = radius_graph(pos, r=self.cutoff, batch=batch)
-        num_nodes=z.size(0)
-        dist, angle, torsion, i, j, idx_kj, idx_ji = xyz_to_dat(pos, edge_index, num_nodes, use_torsion=True)
+        num_nodes = z.size(0)
+        dist, angle, torsion, i, j, idx_kj, idx_ji = xyz2data(pos, edge_index, num_nodes, use_torsion=True)
 
         emb = self.emb(dist, angle, torsion, idx_kj)
 
