@@ -9,8 +9,8 @@ from torch_scatter import scatter
 from math import pi as PI
 
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')
 
 def swish(x):
     return x * torch.sigmoid(x)

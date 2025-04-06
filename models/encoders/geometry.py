@@ -1,18 +1,17 @@
 # Based on the code from: https://github.com/klicperajo/dimenet,
 # https://github.com/rusty1s/pytorch_geometric/blob/master/torch_geometric/nn/models/dimenet_utils.py
-from torch_scatter import scatter
-from torch_geometric.nn import radius_graph
-from math import pi as PI
-from math import sqrt
-
 import torch
 import torch.nn as nn
 import sympy as sym
 
+from torch_scatter import scatter
+from torch_geometric.nn import radius_graph
+from torch_geometric.nn.inits import glorot_orthogonal
+
+from math import pi as PI
+from math import sqrt
+
 from models.encoders.utils import bessel_basis, real_sph_harm, swish, xyz2data
-
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class Envelope(nn.Module):
@@ -51,8 +50,7 @@ class DitanceEmbedding(nn.Module):
 
 
 class AngleEmbedding(nn.Module):
-    def __init__(self, num_spherical, num_radial, cutoff=5.0,
-                 envelope_exponent=5):
+    def __init__(self, num_spherical, num_radial, cutoff=5.0, envelope_exponent=5):
         super(AngleEmbedding, self).__init__()
         assert num_radial <= 64
         self.num_spherical = num_spherical
@@ -92,8 +90,7 @@ class AngleEmbedding(nn.Module):
 
 
 class TorsionEmbedding(nn.Module):
-    def __init__(self, num_spherical, num_radial, cutoff=5.0,
-                 envelope_exponent=5):
+    def __init__(self, num_spherical, num_radial, cutoff=5.0, envelope_exponent=5):
         super(TorsionEmbedding, self).__init__()
         assert num_radial <= 64
         self.num_spherical = num_spherical #
@@ -162,9 +159,9 @@ class ResidualLayer(nn.Module):
         self.reset_parameters()
         
     def reset_parameters(self):
-        nn.init.glorot_orthogonal(self.lin1.weight, scale=2.0)
+        glorot_orthogonal(self.lin1.weight, scale=2.0)
         self.lin1.bias.data.fill_(0)
-        nn.init.glorot_orthogonal(self.lin2.weight, scale=2.0)
+        glorot_orthogonal(self.lin2.weight, scale=2.0)
         self.lin2.bias.data.fill_(0)
 
     def forward(self, x):
@@ -193,7 +190,7 @@ class Init(nn.Module):
             self.emb.weight.data.uniform_(-sqrt(3), sqrt(3))
         self.lin_rbf_0.reset_parameters()
         self.lin.reset_parameters()
-        nn.init.glorot_orthogonal(self.lin_rbf_1.weight, scale=2.0)
+        glorot_orthogonal(self.lin_rbf_1.weight, scale=2.0)
 
     def forward(self, x, emb, i, j):
         rbf,_,_ = emb
@@ -241,29 +238,29 @@ class UpdateE(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.glorot_orthogonal(self.lin_rbf1.weight, scale=2.0)
-        nn.init.glorot_orthogonal(self.lin_rbf2.weight, scale=2.0)
-        nn.init.glorot_orthogonal(self.lin_sbf1.weight, scale=2.0)
-        nn.init.glorot_orthogonal(self.lin_sbf2.weight, scale=2.0)
-        nn.init.glorot_orthogonal(self.lin_t1.weight, scale=2.0)
-        nn.init.glorot_orthogonal(self.lin_t2.weight, scale=2.0)
+        glorot_orthogonal(self.lin_rbf1.weight, scale=2.0)
+        glorot_orthogonal(self.lin_rbf2.weight, scale=2.0)
+        glorot_orthogonal(self.lin_sbf1.weight, scale=2.0)
+        glorot_orthogonal(self.lin_sbf2.weight, scale=2.0)
+        glorot_orthogonal(self.lin_t1.weight, scale=2.0)
+        glorot_orthogonal(self.lin_t2.weight, scale=2.0)
 
-        nn.init.glorot_orthogonal(self.lin_kj.weight, scale=2.0)
+        glorot_orthogonal(self.lin_kj.weight, scale=2.0)
         self.lin_kj.bias.data.fill_(0)
-        nn.init.glorot_orthogonal(self.lin_ji.weight, scale=2.0)
+        glorot_orthogonal(self.lin_ji.weight, scale=2.0)
         self.lin_ji.bias.data.fill_(0)
 
-        nn.init.glorot_orthogonal(self.lin_down.weight, scale=2.0)
-        nn.init.glorot_orthogonal(self.lin_up.weight, scale=2.0)
+        glorot_orthogonal(self.lin_down.weight, scale=2.0)
+        glorot_orthogonal(self.lin_up.weight, scale=2.0)
 
         for res_layer in self.layers_before_skip:
             res_layer.reset_parameters()
-        nn.init.glorot_orthogonal(self.lin.weight, scale=2.0)
+        glorot_orthogonal(self.lin.weight, scale=2.0)
         self.lin.bias.data.fill_(0)
         for res_layer in self.layers_after_skip:
             res_layer.reset_parameters()
 
-        nn.init.glorot_orthogonal(self.lin_rbf.weight, scale=2.0)
+        glorot_orthogonal(self.lin_rbf.weight, scale=2.0)
 
     def forward(self, x, emb, idx_kj, idx_ji):
         rbf0, sbf, t = emb
@@ -315,22 +312,25 @@ class UpdateV(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.glorot_orthogonal(self.lin_up.weight, scale=2.0)
+        glorot_orthogonal(self.lin_up.weight, scale=2.0)
         for lin in self.lins:
-            nn.init.glorot_orthogonal(lin.weight, scale=2.0)
+            glorot_orthogonal(lin.weight, scale=2.0)
             lin.bias.data.fill_(0)
         if self.output_init == 'zeros':
             self.lin.weight.data.fill_(0)
         if self.output_init == 'GlorotOrthogonal':
-            nn.init.glorot_orthogonal(self.lin.weight, scale=2.0)
+            glorot_orthogonal(self.lin.weight, scale=2.0)
 
     def forward(self, e, i):
         _, e2 = e
         v = scatter(e2, i, dim=0)
         v = self.lin_up(v)
+        
         for lin in self.lins:
             v = self.act(lin(v))
+            
         v = self.lin(v)
+        
         return v
     
 
@@ -417,18 +417,55 @@ class SphereNet(nn.Module):
         self.cutoff = cutoff
         self.energy_and_force = energy_and_force
 
-        self.init_e = Init(num_radial, hidden_channels, act, use_node_features=use_node_features)
-        self.init_v = UpdateV(hidden_channels, out_emb_channels, out_channels, num_output_layers, act, output_init)
+        self.init_e = Init(
+            num_radial, 
+            hidden_channels,
+            act, 
+            use_node_features=use_node_features
+        )
+        
+        self.init_v = UpdateV(
+            hidden_channels, 
+            out_emb_channels, 
+            out_channels, 
+            num_output_layers, 
+            act, 
+            output_init
+        )
+        
         self.init_u = UpdateU()
-        self.emb = EmbeddingBlock(num_spherical, num_radial, self.cutoff, envelope_exponent)
+        self.emb = EmbeddingBlock(
+            num_spherical, 
+            num_radial,
+            self.cutoff,
+            envelope_exponent
+        )
 
-        self.update_vs = torch.nn.ModuleList([
-            UpdateV(hidden_channels, out_emb_channels, out_channels, num_output_layers, act, output_init) for _ in range(num_layers)])
+        self.update_vs = nn.ModuleList([
+            UpdateV(
+                hidden_channels, 
+                out_emb_channels, 
+                out_channels, 
+                num_output_layers, 
+                act, 
+                output_init
+            ) for _ in range(num_layers)])
 
-        self.update_es = torch.nn.ModuleList([
-            UpdateE(hidden_channels, int_emb_size, basis_emb_size_dist, basis_emb_size_angle, basis_emb_size_torsion, num_spherical, num_radial, num_before_skip, num_after_skip,act) for _ in range(num_layers)])
+        self.update_es = nn.ModuleList([
+            UpdateE(
+                hidden_channels, 
+                int_emb_size, 
+                basis_emb_size_dist, 
+                basis_emb_size_angle, 
+                basis_emb_size_torsion, 
+                num_spherical, 
+                num_radial, 
+                num_before_skip, 
+                num_after_skip,
+                act
+            ) for _ in range(num_layers)])
 
-        self.update_us = torch.nn.ModuleList([UpdateU() for _ in range(num_layers)])
+        self.update_us = nn.ModuleList([UpdateU() for _ in range(num_layers)])
 
         self.reset_parameters()
 
@@ -441,26 +478,29 @@ class SphereNet(nn.Module):
         for update_v in self.update_vs:
             update_v.reset_parameters()
 
-    def forward(self, batch_data):
-        z, pos, batch = batch_data.z, batch_data.pos, batch_data.batch
-        
+    def forward(self, z, pos, batch):
+        # if turn on energy_and_force, we need to calculate the gradient of the positions
         if self.energy_and_force:
             pos.requires_grad_()
-            
+        
         edge_index = radius_graph(pos, r=self.cutoff, batch=batch)
         num_nodes = z.size(0)
+        
+        # Calculate distance, angle, and torsion features
         dist, angle, torsion, i, j, idx_kj, idx_ji = xyz2data(pos, edge_index, num_nodes, use_torsion=True)
 
+        # Calculate embedding
         emb = self.emb(dist, angle, torsion, idx_kj)
 
         # Initialize edge, node, graph features
         e = self.init_e(z, emb, i, j)
         v = self.init_v(e, i)
-        u = self.init_u(torch.zeros_like(scatter(v, batch, dim=0)), v, batch) #scatter(v, batch, dim=0)
+        u = self.init_u(torch.zeros_like(scatter(v, batch, dim=0)), v, batch) 
 
+        # Message passing
         for update_e, update_v, update_u in zip(self.update_es, self.update_vs, self.update_us):
             e = update_e(e, emb, idx_kj, idx_ji)
             v = update_v(e, i)
-            u = update_u(u, v, batch) # u += scatter(v, batch, dim=0)
+            u = update_u(u, v, batch) 
 
         return u, v

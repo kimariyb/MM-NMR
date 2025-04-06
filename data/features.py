@@ -58,8 +58,7 @@ def get_atom_features(atom: rdchem.Atom):
         rdchem.HybridizationType.SP, rdchem.HybridizationType.SP2,
         rdchem.HybridizationType.SP3, rdchem.HybridizationType.SP3D,
         rdchem.HybridizationType.SP3D2, rdchem.HybridizationType.UNSPECIFIED,
-        rdchem.HybridizationType.OTHER, rdchem.HybridizationType.S
-    ])  # 7
+    ])  # 6
     
     h.append(atom.GetIsAromatic())  # 1
     h.append(atom.IsInRing())  # 1
@@ -103,9 +102,7 @@ def get_bond_features(bond: rdchem.Bond):
     h += one_encoding_unk(bond_stereo, [
         rdchem.BondStereo.STEREONONE, rdchem.BondStereo.STEREOANY,
         rdchem.BondStereo.STEREOZ, rdchem.BondStereo.STEREOE,
-        rdchem.BondStereo.STEREOCIS, rdchem.BondStereo.STEREOTRANS ,
-        rdchem.BondStereo.STEREOATROPCW, rdchem.BondStereo.STEREOATROPCCW    
-    ])  # 8
+    ])  # 4
     
     return h
 
