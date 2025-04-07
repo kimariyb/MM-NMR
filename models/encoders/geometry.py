@@ -351,8 +351,6 @@ class SphereNet(nn.Module):
     
     Parameters
     ----------
-    energy_and_force : bool, optional
-        Whether to return the energy and force predictions. Default is False.
     cutoff : float, optional
         Cutoff distance for interatomic interactions. Default is 5.0.
     num_layers : int, optional
@@ -392,7 +390,6 @@ class SphereNet(nn.Module):
     """
     def __init__(
         self, 
-        energy_and_force=False, 
         cutoff=5.0, 
         num_layers=4,
         hidden_channels=128, 
@@ -415,7 +412,6 @@ class SphereNet(nn.Module):
         super(SphereNet, self).__init__()
 
         self.cutoff = cutoff
-        self.energy_and_force = energy_and_force
 
         self.init_e = Init(
             num_radial, 
@@ -433,7 +429,6 @@ class SphereNet(nn.Module):
             output_init
         )
         
-        self.init_u = UpdateU()
         self.emb = EmbeddingBlock(
             num_spherical, 
             num_radial,
@@ -465,8 +460,6 @@ class SphereNet(nn.Module):
                 act
             ) for _ in range(num_layers)])
 
-        self.update_us = nn.ModuleList([UpdateU() for _ in range(num_layers)])
-
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -478,11 +471,7 @@ class SphereNet(nn.Module):
         for update_v in self.update_vs:
             update_v.reset_parameters()
 
-    def forward(self, z, pos, batch):
-        # if turn on energy_and_force, we need to calculate the gradient of the positions
-        if self.energy_and_force:
-            pos.requires_grad_()
-        
+    def forward(self, z, pos, batch):        
         edge_index = radius_graph(pos, r=self.cutoff, batch=batch)
         num_nodes = z.size(0)
         
@@ -495,12 +484,10 @@ class SphereNet(nn.Module):
         # Initialize edge, node, graph features
         e = self.init_e(z, emb, i, j)
         v = self.init_v(e, i)
-        u = self.init_u(torch.zeros_like(scatter(v, batch, dim=0)), v, batch) 
 
         # Message passing
-        for update_e, update_v, update_u in zip(self.update_es, self.update_vs, self.update_us):
+        for update_e, update_v in zip(self.update_es, self.update_vs):
             e = update_e(e, emb, idx_kj, idx_ji)
             v = update_v(e, i)
-            u = update_u(u, v, batch) 
 
-        return u, v
+        return v

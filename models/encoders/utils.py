@@ -9,9 +9,6 @@ from torch_scatter import scatter
 from math import pi as PI
 
 
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-device = torch.device('cpu')
-
 def swish(x):
     return x * torch.sigmoid(x)
 
@@ -192,7 +189,7 @@ def xyz2data(pos, edge_index, num_nodes, use_torsion = False):
     # Calculate distances. # number of edges
     dist = (pos[i] - pos[j]).pow(2).sum(dim=-1).sqrt()
 
-    value = torch.arange(j.size(0), device=j.device)
+    value = torch.arange(j.size(0))
     adj_t = SparseTensor(row=i, col=j, value=value, sparse_sizes=(num_nodes, num_nodes))
     adj_t_row = adj_t[j]
     num_triplets = adj_t_row.set_value(None).sum(dim=1).to(torch.long)
@@ -217,7 +214,7 @@ def xyz2data(pos, edge_index, num_nodes, use_torsion = False):
 
     if use_torsion:
         # Prepare torsion idxes.
-        idx_batch = torch.arange(len(idx_i),device=device)
+        idx_batch = torch.arange(len(idx_i))
         idx_k_n = adj_t[idx_j].storage.col()
         repeat = num_triplets
         num_triplets_t = num_triplets.repeat_interleave(repeat)[mask]

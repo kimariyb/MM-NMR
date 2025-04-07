@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from torch_geometric.nn import global_mean_pool
-from einops import rearrange, repeat
+from einops import rearrange, repeat, pack, unpack
 from einops.layers.torch import Rearrange
 
 from models.encoders.graph import GraphNet
@@ -12,7 +12,7 @@ from models.encoders.geometry import SphereNet
 
 class TokenProjection(nn.Module):
     r"""
-    Token projection layer for 2D and 3D inputs.
+    Token projection layer 
     """
     def __init__(self, input_dim, output_dim):
         super(TokenProjection, self).__init__()
@@ -27,6 +27,9 @@ class TokenProjection(nn.Module):
     
 
 class FeedForward(nn.Module):
+    r"""
+    Feed-forward layer
+    """
     def __init__(self, input_dim, hidden_dim, dropout = 0.):
         super().__init__()
         self.net = nn.Sequential(
@@ -43,6 +46,9 @@ class FeedForward(nn.Module):
     
     
 class MultiHeadAttention(nn.Module):
+    r"""
+    Multi-head attention layer 
+    """
     def __init__(self, input_dim, num_heads=8, head_dim=64, dropout=0.):
         super().__init__()
         inner_dim = head_dim *  num_heads
@@ -81,6 +87,9 @@ class MultiHeadAttention(nn.Module):
             
             
 class Transformer(nn.Module):
+    r"""
+    Transformer model
+    """
     def __init__(self, input_dim, num_layers, num_heads, head_dim, ffn_dim, dropout=0.):
         super().__init__()
         self.norm = nn.LayerNorm(input_dim)
@@ -99,63 +108,103 @@ class Transformer(nn.Module):
         return self.norm(x)
 
 
-class FusionTransformer(nn.Module):
+class VisionTransformer(nn.Module):
     r"""
-    The Fusion Transformer model. It takes 2D and 3D inputs and outputs their fusion.
-    The model is based on the ViT (Vision Transformer) architecture.
+    Vision transformer model
     """
     def __init__(
         self, 
-        input_dim_2d,
-        input_dim_3d,
+        seq_len, 
+        patch_size, 
+        num_classes, 
         hidden_dim, 
-        num_layers=1, 
-        num_heads=8, 
-        dropout=0.
+        num_layers, 
+        num_heads, 
+        mlp_dim, 
+        channels = 3, 
+        head_dim = 64, 
+        dropout = 0., 
+        emb_dropout = 0.
     ):
-        super(FusionTransformer, self).__init__()
-        self.input_dim_2d = input_dim_2d
-        self.input_dim_3d = input_dim_3d
-        self.hidden_dim = hidden_dim
-        self.num_layers = num_layers
-        self.num_heads = num_heads
-        self.dropout = dropout
-        
-        # Token Creation, t: 2D, g: 3D, tg: 2D+3D
-        self.tau_t = TokenProjection(input_dim_2d, hidden_dim)
-        self.tau_g = TokenProjection(input_dim_3d, hidden_dim)
-        self.tau_tg = TokenProjection(input_dim_2d+input_dim_3d, hidden_dim)
-        
-        # Fusion Transformer (based on ViT)
-        self.transformer_layers = Transformer(hidden_dim, num_layers, num_heads, hidden_dim, hidden_dim, dropout)
-        
-        self.pos_embedding = nn.Parameter(torch.randn(1, 4, hidden_dim))
-        self.cls_token = nn.Parameter(torch.randn(1, 1, hidden_dim))
-        self.dropout = nn.Dropout(dropout)
-        self.to_latent = nn.Identity()
-                
-        # Initialize parameters
-        self.reset_parameters()        
-        
-    def forward(self, h_t, h_g):
-        # Token Creation
-        h_t = self.tau_t(h_t) # (batch_size, hidden_dim)
-        h_g = self.tau_g(h_g) # (batch_size, hidden_dim)
-        h_tg = self.tau_tg(torch.cat([h_t, h_g], dim=-1)) # (batch_size, hidden_dim)
-        
-        # Fusion Transformer
-        x = torch.stack([h_t, h_g, h_tg], dim=1) # (batch_size, 3, hidden_dim)
-        
+        super().__init__()
+        assert (seq_len % patch_size) == 0
+
+        num_patches = seq_len // patch_size
+        patch_dim = channels * patch_size
+
+        self.to_patch_embedding = nn.Sequential(
+            Rearrange('b c (n p) -> b n (p c)', p = patch_size),
+            nn.LayerNorm(patch_dim),
+            nn.Linear(patch_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+        )
+
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, hidden_dim))
+        self.cls_token = nn.Parameter(torch.randn(hidden_dim))
+        self.dropout = nn.Dropout(emb_dropout)
+
+        self.transformer = Transformer(hidden_dim, num_layers,  num_heads, head_dim, mlp_dim, dropout)
+
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(hidden_dim),
+            nn.Linear(hidden_dim, num_classes)
+        )
+
+    def forward(self, series):
+        x = self.to_patch_embedding(series)
         b, n, _ = x.shape
+
+        cls_tokens = repeat(self.cls_token, 'd -> b d', b = b)
+
+        x, ps = pack([cls_tokens, x], 'b * d')
+
+        x += self.pos_embedding[:, :(n + 1)]
+        x = self.dropout(x)
+
+        x = self.transformer(x)
+
+        cls_tokens, _ = unpack(x, ps, 'b * d')
+
+        return self.mlp_head(cls_tokens)
+    
+    
+class FusionTransformer(nn.Module):
+    def __init__(
+        self, 
+        seq_len, 
+        patch_size, 
+        num_classes, 
+        hidden_dim, 
+        num_layers, 
+        num_heads, 
+        mlp_dim, 
+        channels = 3, 
+        head_dim = 64, 
+        dropout = 0., 
+        emb_dropout = 0.
+    ):
+        super().__init__()
+        assert (seq_len % patch_size) == 0
+
+        self.transformer = VisionTransformer(
+            seq_len, 
+            patch_size, 
+            num_classes, 
+            hidden_dim, 
+            num_layers, 
+            num_heads, 
+            mlp_dim, 
+            channels, 
+            head_dim, 
+            dropout, 
+            emb_dropout
+        )
         
-        # add CLS token and position embedding
-        cls_tokens = repeat(self.cls_token, '1 1 d -> b 1 d', b=b)
-        x = torch.cat((cls_tokens, x), dim=1)
-        x += self.pos_embedding[:, :(n + 1)] 
+        self.graph_net = GraphNet(hidden_dim, hidden_dim, hidden_dim, dropout)
+        self.sphere_net = SphereNet(hidden_dim, hidden_dim, hidden_dim, dropout)
         
-        # Transformer Encoder
-        x = self.transformer_encoder(x) # (batch_size, 4, hidden_dim)
-        x = x.mean(dim=1) # (batch_size, hidden_dim)
-        x = self.to_latent(x) # (batch_size, hidden_dim)
+        self.tau_t = TokenProjection(hidden_dim, hidden_dim)
+        self.tau_g = TokenProjection(hidden_dim, hidden_dim)
+        self.tau_tg = TokenProjection(hidden_dim, hidden_dim)
         
-        return z_t, z_g, z_tg
+        

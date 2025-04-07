@@ -1,1 +1,1 @@
-#TODO: Implement sequence encoder
+# TODO: Implement sequence encoder

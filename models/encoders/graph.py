@@ -152,8 +152,6 @@ class GraphNet(nn.Module):
         Number of GNN layers.
     emb_dim : int
         Dimensionality of hidden units.
-    output_dim : int
-        Dimensionality of output units.
     JK : str
         Jumping knowledge type. 
     drop_ratio : float
@@ -167,7 +165,6 @@ class GraphNet(nn.Module):
         self, 
         num_layers, 
         emb_dim, 
-        num_classes, 
         JK ="last", 
         drop_ratio = 0., 
         gnn_type = "gin",
@@ -210,13 +207,9 @@ class GraphNet(nn.Module):
         # List of batchnorms
         self.batch_norms = nn.ModuleList()
         for layer in range(num_layers):
-            self.batch_norms.append(nn.BatchNorm1d(emb_dim))
-            
-        # Output
-        self.output = nn.Linear(emb_dim, num_classes)
- 
+            self.batch_norms.append(nn.BatchNorm1d(emb_dim)) 
 
-    def forward(self, x, edge_index, edge_attr, batch):
+    def forward(self, x, edge_index, edge_attr):
         x = self.node_embedding(x)
 
         h_list = [x]
@@ -243,9 +236,6 @@ class GraphNet(nn.Module):
             node_representation = torch.sum(torch.cat(h_list, dim=0), dim=0)[0]
         else:
             raise ValueError("not implemented.")
-        
-        # Graph pooling
-        graph_representation = self.pool(node_representation, batch=batch)
 
-        return graph_representation, node_representation
+        return node_representation
 
