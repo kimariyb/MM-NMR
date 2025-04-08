@@ -1,8 +1,11 @@
 import os
+import torch
 
+from tqdm import tqdm
 from torch.utils.data import Subset
 from torch_geometric.loader import DataLoader
 from pytorch_lightning import LightningDataModule
+from pytorch_lightning.utilities import rank_zero_only
 
 from data.carbon import CarbonDataset
 from lightning_utils import make_splits
@@ -14,6 +17,8 @@ class SpectraDataModule(LightningDataModule):
         self.hparams.update(hparams.__dict__) if hasattr(
             hparams, "__dict__"
         ) else self.hparams.update(hparams)
+        
+        self._mean, self._std = self.hparams["mean"], self.hparams["std"]
         self._saved_dataloaders = dict()
         self.dataset = None
 
@@ -40,6 +45,14 @@ class SpectraDataModule(LightningDataModule):
         self.train_dataset = Subset(self.dataset, self.idx_train)
         self.val_dataset = Subset(self.dataset, self.idx_val)
         self.test_dataset = Subset(self.dataset, self.idx_test)
+        
+        if self.hparams["standardize"] and (
+            self._mean is None or self._std is None
+        ):
+            self._standardize()
+            print(
+                f"****** Standardized dataset with mean {self._mean} and std {self._std} ******"
+            )
 
     def train_dataloader(self):
         return self._get_dataloader(self.train_dataset, "train")
@@ -50,6 +63,14 @@ class SpectraDataModule(LightningDataModule):
     def test_dataloader(self):
         return self._get_dataloader(self.test_dataset, "test")
 
+    @property
+    def mean(self):
+        return self._mean
+
+    @property
+    def std(self):
+        return self._std
+    
     def _get_dataloader(self, dataset, stage, store_dataloader=True):
         store_dataloader = store_dataloader and not self.hparams["reload"]
         if stage in self._saved_dataloaders and store_dataloader:
@@ -76,3 +97,20 @@ class SpectraDataModule(LightningDataModule):
             
         return dl
 
+    @rank_zero_only
+    def _standardize(self):
+        data = tqdm(
+            self._get_dataloader(
+                self.train_dataset, "val", store_dataloader=False
+            ),
+            desc="computing mean and std",
+        )
+        ys = []
+        
+        for batch in data:
+            y, mask = batch.y, batch.mask
+            ys.append(y[mask])
+            ys = torch.cat(ys, dim=0)
+            
+        self._mean = ys.mean(dim=0)
+        self._std = ys.std(dim=0)

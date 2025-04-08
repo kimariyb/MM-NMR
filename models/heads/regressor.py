@@ -3,11 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torch_geometric.nn import GlobalAttention
-
 from models.encoders.graph import GraphNet
 from models.encoders.geometry import SphereNet
-
+from models.fusion.transformer import BiCrossAttention
 
 
 class PredictorRegressor(nn.Module):
@@ -22,18 +20,6 @@ class PredictorRegressor(nn.Module):
         
     def forward(self, x):
         return self.predictor(x)
-
-
-class BatchGlobalAttention(nn.Module):
-    r"""
-    Batch-wise global attention module.
-    """
-    def __init__(self, hidden_size):
-        super().__init__()
-        self.global_attn = GlobalAttention(gate_nn=nn.Linear(hidden_size, 1))
-
-    def forward(self, x, batch):
-        return self.global_attn(x, batch)
     
 
 class WeightFusion(nn.Module):
@@ -84,96 +70,88 @@ class MultiModalFusionRegressor(nn.Module):
     r"""
     Multi-modal fusion regressor module. 
     """
-    def __init__(self, gnn_args, sphere_args, proj_dim, dropout):
+    def __init__(self, gnn_args, sphere_args, model_args, mean, std):
         super().__init__()
         self.gnn_args = gnn_args
         self.sphere_args = sphere_args
-        self.proj_dim = proj_dim
-        self.dropout = dropout
+        self.model_args = model_args
+        
+        mean = torch.scalar_tensor(0) if mean is None else mean
+        if not isinstance(mean, torch.Tensor):
+            mean = torch.tensor(mean).float()
+        self.register_buffer('mean', mean)
+
+        std = torch.scalar_tensor(1) if std is None else std
+        if not isinstance(std, torch.Tensor):
+            std = torch.tensor(std).float()
+        self.register_buffer('std', std)
 
         self.mae_loss = nn.L1Loss()
         
         # GNN
-        self.gnn = GraphNet(
-            self.gnn_args.num_layers,
-            self.gnn_args.hidden_dim,
-            self.gnn_args.JK,
-            self.gnn_args.dropout,
-            self.gnn_args.gnn_type,
-            self.gnn_args.graph_pooling,
-        )
+        self.gnn = GraphNet(**self.gnn_args)
         
         # Spherenet
-        self.sphere = SphereNet(
-            cutoff=self.sphere_args.cutoff,
-            num_layers=self.sphere_args.num_layers,
-            hidden_channels=self.sphere_args.hidden_dim,
-            out_channels=self.sphere_args.hidden_dim,
-            int_emb_size=self.sphere_args.int_emb_size,
-            basis_emb_size_dist=self.sphere_args.basis_emb_size_dist,
-            basis_emb_size_angle=self.sphere_args.basis_emb_size_angle,
-            basis_emb_size_torsion=self.sphere_args.basis_emb_size_torsion,
-            out_emb_channels=self.sphere_args.out_emb_channels,
-            num_spherical=self.sphere_args.num_spherical,
-            num_radial=self.sphere_args.num_radial,
-            envelope_exponent=self.sphere_args.envelope_exponent,
-            num_before_skip=self.sphere_args.num_before_skip,
-            num_after_skip=self.sphere_args.num_after_skip,
-            num_output_layers=self.sphere_args.num_output_layers,
-        )
+        self.sphere = SphereNet(**self.sphere_args)
 
         # Projection
         self.pro_t = nn.Sequential(
-            nn.Linear(self.gnn_args.hiiden_dim, self.proj_dim), 
+            nn.Linear(self.gnn_args.hiiden_dim, self.model_args.proj_dim), 
             nn.ReLU(inplace=True),
-            nn.Linear(self.proj_dim, self.proj_dim)
+            nn.Linear(self.model_args.proj_dim, self.model_args.proj_dim)
         )
         
         self.pro_g = nn.Sequential(
-            nn.Linear(self.sphere_args.hidden_dim, self.proj_dim), 
+            nn.Linear(self.sphere_args.hidden_dim, self.model_args.proj_dim), 
             nn.ReLU(inplace=True),
-            nn.Linear(self.proj_dim, self.proj_dim)
+            nn.Linear(self.model_args.proj_dim, self.model_args.proj_dim)
+        )
+        
+        # Bi-Cross attention
+        self.cross_attn = BiCrossAttention(
+            hidden_dim=self.model_args.hidden_dim,
+            num_heads=self.model_args.num_heads,
+            head_dim=self.model_args.head_dim,
+            dropout=self.model_args.dropout,
         )
 
         # Fusion
         self.fusion_dim = (self.gnn_args.hidden_dim + self.sphere_args.hidden_dim) / 2
         self.fusion = WeightFusion(2, self.fusion_dim)
-        
-        # Pooling
-        self.pooled_t = BatchGlobalAttention(self.gnn_args.hidden_dim)
-        self.pooled_g = BatchGlobalAttention(self.sphere_args.hidden_dim)
 
-        # predict head
+        # Predict head
         self.predictor = PredictorRegressor(self.fusion_dim)
 
         # dropout
-        self.dropout = nn.Dropout(self.dropout)
+        self.dropout = nn.Dropout(self.model_args.dropout)
 
 
-    def forward(self, x, edge_index, edge_attr, pos, z, batch, mask):
+    def forward(self, data):
+        x, edge_index, edge_attr, pos, z, batch, mask = data.x, data.edge_index, data.edge_attr, data.pos, data.z, data.batch, data.mask
         # get the node representations
-        node_t = self.gnn(x, edge_index, edge_attr)
-        node_g = self.sphere(z, pos, batch)
+        graph_t, node_t = self.gnn(x, edge_index, edge_attr, batch)
+        graph_g, node_g = self.sphere(z, pos, batch)
+        
+        # bi-cross attention
+        graph_t, graph_g = self.cross_attn(graph_t, graph_g)    
         
         # fusion node representations
         node_fused = self.node_fusion(torch.cat([node_t, node_g], dim=-1))
         node_fused = self.dropout(node_fused)
         
-        # predict
+        # predict and normalize
         pred = self.predictor(node_fused)
         nmr_pred = pred[mask][:, 0]
+        if self.std is not None:
+            nmr_pred = nmr_pred * self.std
+        if self.mean is not None:
+            nmr_pred = nmr_pred + self.mean
 
         # Contrastive loss calculation
-        # get the graph representations
-        graph_t = self.pooled_t(node_t, batch)
-        graph_g = self.pooled_g(node_g, batch)
-        
-        # projection
         proj_t = self.pro_t(graph_t)
         proj_g = self.pro_g(graph_g)
         
-        
-        return nmr_pred, proj_t, proj_g, batch
+        return nmr_pred, proj_t, proj_g, mask
 
     def calc_label_loss(self, pred, label, mask):
         r"""
@@ -200,7 +178,6 @@ class MultiModalFusionRegressor(nn.Module):
         ).mean()
 
         return loss
-
 
     def calc_loss(self, pred, label, mask, z1, z2, alpha=0.8):
         loss1 = self.calc_label_loss(pred, label, mask)

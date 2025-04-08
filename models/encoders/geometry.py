@@ -429,6 +429,8 @@ class SphereNet(nn.Module):
             output_init
         )
         
+        self.init_u = UpdateU()
+        
         self.emb = EmbeddingBlock(
             num_spherical, 
             num_radial,
@@ -460,6 +462,8 @@ class SphereNet(nn.Module):
                 act
             ) for _ in range(num_layers)])
 
+        self.update_us = torch.nn.ModuleList([UpdateU() for _ in range(num_layers)])
+
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -484,10 +488,12 @@ class SphereNet(nn.Module):
         # Initialize edge, node, graph features
         e = self.init_e(z, emb, i, j)
         v = self.init_v(e, i)
+        u = self.init_u(torch.zeros_like(scatter(v, batch, dim=0)), v, batch) #scatter(v, batch, dim=0)
 
         # Message passing
-        for update_e, update_v in zip(self.update_es, self.update_vs):
+        for update_e, update_v, update_u in zip(self.update_es, self.update_vs, self.update_us):
             e = update_e(e, emb, idx_kj, idx_ji)
             v = update_v(e, i)
+            u = update_u(u, v, batch) #u += scatter(v, batch, dim=0)
 
-        return v
+        return u, v

@@ -1,13 +1,31 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-from torch_geometric.nn import global_mean_pool
 from einops import rearrange, repeat, pack, unpack
 from einops.layers.torch import Rearrange
 
-from models.encoders.graph import GraphNet
-from models.encoders.geometry import SphereNet
+
+class BiCrossAttention(nn.Module):
+    r"""
+    Bi-directional cross-attention layer
+    """
+    def __init__(self, hidden_dim, num_heads=4, head_dim=64, dropout=0.):
+        super().__init__()
+        self.attn_2d_to_3d = MultiHeadAttention(hidden_dim, num_heads, head_dim, dropout)
+        self.attn_3d_to_2d = MultiHeadAttention(hidden_dim, num_heads, head_dim, dropout)
+
+        self.norm = nn.LayerNorm(hidden_dim)
+    
+    def forward(self, feat_2d, feat_3d):
+        # 2d -> 3d
+        attn_2d, _ = self.attn_2d_to_3d(feat_2d, feat_3d, feat_3d)
+        attn_2d = self.norm(attn_2d)
+        
+        # 3d -> 2d
+        attn_3d, _ = self.attn_3d_to_2d(feat_3d, feat_2d, feat_2d)
+        attn_3d = self.norm(attn_3d)
+        
+        return attn_3d, attn_2d
 
 
 class TokenProjection(nn.Module):
@@ -82,8 +100,9 @@ class MultiHeadAttention(nn.Module):
 
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
+        out = self.to_out(out)
         
-        return self.to_out(out)
+        return attn, out
             
             
 class Transformer(nn.Module):
@@ -94,6 +113,7 @@ class Transformer(nn.Module):
         super().__init__()
         self.norm = nn.LayerNorm(input_dim)
         self.layers = nn.ModuleList([])
+        
         for _ in range(num_layers):
             self.layers.append(nn.ModuleList([
                 MultiHeadAttention(input_dim, num_heads, head_dim, dropout),
@@ -102,10 +122,11 @@ class Transformer(nn.Module):
 
     def forward(self, x):
         for attn, ff in self.layers:
-            x = attn(x) + x
-            x = ff(x) + x
+            _, out = attn(x)
+            out = out + x
+            out = ff(out) + out
 
-        return self.norm(x)
+        return self.norm(out)
 
 
 class VisionTransformer(nn.Module):
@@ -167,44 +188,6 @@ class VisionTransformer(nn.Module):
 
         return self.mlp_head(cls_tokens)
     
-    
-class FusionTransformer(nn.Module):
-    def __init__(
-        self, 
-        seq_len, 
-        patch_size, 
-        num_classes, 
-        hidden_dim, 
-        num_layers, 
-        num_heads, 
-        mlp_dim, 
-        channels = 3, 
-        head_dim = 64, 
-        dropout = 0., 
-        emb_dropout = 0.
-    ):
-        super().__init__()
-        assert (seq_len % patch_size) == 0
 
-        self.transformer = VisionTransformer(
-            seq_len, 
-            patch_size, 
-            num_classes, 
-            hidden_dim, 
-            num_layers, 
-            num_heads, 
-            mlp_dim, 
-            channels, 
-            head_dim, 
-            dropout, 
-            emb_dropout
-        )
-        
-        self.graph_net = GraphNet(hidden_dim, hidden_dim, hidden_dim, dropout)
-        self.sphere_net = SphereNet(hidden_dim, hidden_dim, hidden_dim, dropout)
-        
-        self.tau_t = TokenProjection(hidden_dim, hidden_dim)
-        self.tau_g = TokenProjection(hidden_dim, hidden_dim)
-        self.tau_tg = TokenProjection(hidden_dim, hidden_dim)
         
         

@@ -22,6 +22,7 @@ def get_args():
         type=str,
         help="Restart training using a model checkpoint",
     )  # keep first
+    
     parser.add_argument(
         "--conf",
         "-c",
@@ -29,6 +30,27 @@ def get_args():
         action=LoadFromFile,
         help="Configuration yaml file",
     )  # keep second
+    
+    parser.add_argument(
+        "--gnn-args",
+        type=str,
+        default='./configs/graph.yml',
+        help="Arguments for the GNN model (in yaml format)",
+    )
+    
+    parser.add_argument(
+        "--geom-args",
+        type=str,
+        default='./configs/geometry.yml',
+        help="Arguments for the geometry model (in yaml format)",
+    )
+    
+    parser.add_argument(
+        "--model-args",
+        type=str,
+        default='./configs/model.yml',
+        help="Arguments for the model (in yaml format)",
+    )
 
     # training settings
     parser.add_argument(
@@ -80,7 +102,15 @@ def get_args():
     parser.add_argument(
         "--dataset-root", default='./data', type=str, help="Data storage directory"
     )
-
+    parser.add_argument(
+        "--mean", default=None, type=float, help="Mean of the dataset"
+    )
+    parser.add_argument(
+        "--std",
+        default=None,
+        type=float,
+        help="Standard deviation of the dataset",
+    )
     # dataloader specific
     parser.add_argument(
         "--reload",
@@ -96,6 +126,12 @@ def get_args():
         default=None,
         type=int,
         help="Batchsize for validation and tests.",
+    )
+    parser.add_argument(
+        "--standardize",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="If true, multiply prediction by dataset std and add mean",
     )
     parser.add_argument(
         "--splits",
@@ -220,6 +256,7 @@ def main():
 
     data = SpectraDataModule(args)
     data.prepare_dataset()
+    args.mean, args.std = data.mean, data.std
 
     model = SpectraLightningModule(args)
 

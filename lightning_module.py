@@ -1,4 +1,5 @@
 import torch
+import yaml
 
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -12,7 +13,20 @@ class SpectraLightningModule(LightningModule):
         super(SpectraLightningModule, self).__init__()
 
         self.save_hyperparameters(config)
-        self.model = MultiModalFusionRegressor(self.hparams)
+        self.gnn_args, self.sphere_args, self.model_args = self.load_yml_config(
+            gnn_config_path=self.hparams.gnn_config_path,
+            sphere_config_path=self.hparams.sphere_config_path,
+            model_config_path=self.hparams.model_config_path,
+        )
+        
+        self.model = MultiModalFusionRegressor(
+            gnn_args=self.gnn_args, 
+            sphere_args=self.sphere_args, 
+            model_args=self.model_args,
+            mean=self.hparams.mean,
+            std=self.hparams.std,
+        )
+        
         self._reset_losses_dict()
 
     def configure_optimizers(self):
@@ -29,6 +43,7 @@ class SpectraLightningModule(LightningModule):
             patience=self.hparams.lr_patience,
             min_lr=self.hparams.lr_min,
         )
+        
         lr_scheduler = {
             "scheduler": scheduler,
             "monitor": "val_loss",
@@ -39,26 +54,22 @@ class SpectraLightningModule(LightningModule):
         return [optimizer], [lr_scheduler]
 
     def forward(self, batch):
-        return self.model()
+        return self.model(batch)
 
     def training_step(self, batch, batch_idx):
-        return self.step(batch, l1_loss, "train")
+        with torch.set_grad_enabled(True):
+            pred, z1, z2, mask = self(batch)
+            
+            self.model.calc_loss(pred, )
+        
+        
+            
 
     def validation_step(self, batch, batch_idx):
-        return self.step(batch, l1_loss, "val")
+        return self.step(batch, "val")
 
     def test_step(self, batch, batch_idx):
-        return self.step(batch, l1_loss, "test")
-
-    def step(self, batch, loss_fn, stage):
-        with torch.set_grad_enabled(stage == "train"):
-            pred = self(batch)
-
-        label, mask = batch["label"], batch["mask"]
-        loss = loss_fn(pred, label[mask])
-        self.losses[stage].append(loss.detach())
-
-        return loss
+        return self.step(batch, "test")
 
     def optimizer_step(self, *args, **kwargs):
         optimizer = kwargs["optimizer"] if "optimizer" in kwargs else args[2]
@@ -105,3 +116,27 @@ class SpectraLightningModule(LightningModule):
             "val": [],
             "test": [],
         }
+    
+    def load_yml_config(self, gnn_config_path, sphere_config_path, model_config_path):
+        r"""
+        load config from yml files
+        """
+        if gnn_config_path.endswith(".yml") or gnn_config_path.endswith(".yaml"):
+            with open(gnn_config_path, "r") as f:
+                gnn_config = yaml.load(f, Loader=yaml.FullLoader)
+        else:
+            raise ValueError("gnn_config_path should be a yml file")
+
+        if sphere_config_path.endswith(".yml") or sphere_config_path.endswith(".yaml"):
+            with open(sphere_config_path, "r") as f:
+                sphere_config = yaml.load(f, Loader=yaml.FullLoader)
+        else:
+            raise ValueError("sphere_config_path should be a yml file")
+
+        if model_config_path.endswith(".yml") or model_config_path.endswith(".yaml"):
+            with open(model_config_path, "r") as f:
+                model_config = yaml.load(f, Loader=yaml.FullLoader)
+        else:
+            raise ValueError("model_config_path should be a yml file")
+
+        return gnn_config, sphere_config, model_config
