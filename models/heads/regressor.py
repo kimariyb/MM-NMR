@@ -90,6 +90,8 @@ class MultiModalFusionRegressor(nn.Module):
         self.sphere_args = sphere_args
         self.proj_dim = proj_dim
         self.dropout = dropout
+
+        self.mae_loss = nn.L1Loss()
         
         # GNN
         self.gnn = GraphNet(
@@ -144,6 +146,9 @@ class MultiModalFusionRegressor(nn.Module):
         # predict head
         self.predictor = PredictorRegressor(self.fusion_dim)
 
+        # dropout
+        self.dropout = nn.Dropout(self.dropout)
+
 
     def forward(self, x, edge_index, edge_attr, pos, z, batch, mask):
         # get the node representations
@@ -152,11 +157,11 @@ class MultiModalFusionRegressor(nn.Module):
         
         # fusion node representations
         node_fused = self.node_fusion(torch.cat([node_t, node_g], dim=-1))
-        node_fused = F.prelu(node_fused, 0.2)
-        node_fused = F.dropout(node_fused, self.dropout, training=self.training)
+        node_fused = self.dropout(node_fused)
         
         # predict
         pred = self.predictor(node_fused)
+        nmr_pred = pred[mask][:, 0]
 
         # Contrastive loss calculation
         # get the graph representations
@@ -168,4 +173,39 @@ class MultiModalFusionRegressor(nn.Module):
         proj_g = self.pro_g(graph_g)
         
         
-        return pred, proj_t, proj_g, batch
+        return nmr_pred, proj_t, proj_g, batch
+
+    def calc_label_loss(self, pred, label, mask):
+        r"""
+        Calculate the label loss.
+        """
+        return self.mae_loss(pred, label[mask])
+
+    def calc_contrastive_loss(self, x1, x2, T=0.1):
+        r"""
+        Calculate the contrastive loss.
+        """
+        batch_size, _ = x1.shape
+
+        x1_abs = x1.norm(dim=1)
+        x2_abs = x2.norm(dim=1)
+
+        sim_matrix = torch.einsum('ik,jk->ij', x1, x2) / torch.einsum('i,j->ij', x1_abs, x2_abs)
+        sim_matrix = torch.exp(sim_matrix / T)
+
+        pos_sim = sim_matrix[range(batch_size), range(batch_size)]
+
+        loss = -torch.log(
+            pos_sim / (sim_matrix.sum(dim=1) - pos_sim)
+        ).mean()
+
+        return loss
+
+
+    def calc_loss(self, pred, label, mask, z1, z2, alpha=0.8):
+        loss1 = self.calc_label_loss(pred, label, mask)
+        loss2 = self.calc_contrastive_loss(z1, z2)
+
+        loss = loss1 + alpha * loss2
+
+        return loss, loss1, loss2
