@@ -414,7 +414,7 @@ class SphereNet(nn.Module):
             num_radial, 
             hidden_channels,
             swish, 
-            use_node_features=use_node_features
+            use_node_features
         )
         
         self.init_v = UpdateV(
@@ -477,7 +477,9 @@ class SphereNet(nn.Module):
         num_nodes = z.size(0)
         
         # Calculate distance, angle, and torsion features
-        dist, angle, torsion, i, j, idx_kj, idx_ji = xyz2data(pos, edge_index, num_nodes, use_torsion=True)
+        dist, angle, torsion, i, j, idx_kj, idx_ji = xyz2data(
+            pos, edge_index, num_nodes, use_torsion=True
+        )
 
         # Calculate embedding
         emb = self.emb(dist, angle, torsion, idx_kj)

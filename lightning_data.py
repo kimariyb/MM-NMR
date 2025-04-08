@@ -24,7 +24,7 @@ class SpectraDataModule(LightningDataModule):
 
     def prepare_dataset(self):
         if self.hparams["dataset"] == "carbon":
-            self.dataset = CarbonDataset(self.hparams["dataset_root"],)
+            self.dataset = CarbonDataset(os.path.join(self.hparams["dataset_root"], "carbon"))
         elif self.hparams["dataset"] == "hydrogen":
             raise NotImplementedError
         
@@ -105,12 +105,14 @@ class SpectraDataModule(LightningDataModule):
             ),
             desc="computing mean and std",
         )
+
         ys = []
-        
         for batch in data:
-            y, mask = batch.y, batch.mask
-            ys.append(y[mask])
-            ys = torch.cat(ys, dim=0)
-            
+            if not hasattr(batch, 'y') or not hasattr(batch, 'mask'):
+                raise ValueError("Batch must contain y and mask")
+            masked_y = batch.y[batch.mask]
+            ys.append(masked_y)
+
+        ys = torch.cat(ys, dim=0)
         self._mean = ys.mean(dim=0)
         self._std = ys.std(dim=0)

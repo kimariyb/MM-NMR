@@ -3,6 +3,7 @@ import torch
 
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.nn.functional import l1_loss
 from pytorch_lightning import LightningModule
 
 from models.heads.regressor import MultiModalFusionRegressor
@@ -11,22 +12,17 @@ from models.heads.regressor import MultiModalFusionRegressor
 class SpectraLightningModule(LightningModule):
     def __init__(self, config) -> None:
         super(SpectraLightningModule, self).__init__()
-
         self.save_hyperparameters(config)
-        self.gnn_args, self.sphere_args, self.model_args = self.load_yml_config(
-            gnn_config_path=self.hparams.gnn_config_path,
-            sphere_config_path=self.hparams.sphere_config_path,
-            model_config_path=self.hparams.model_config_path,
-        )
-        
+        self.gnn_args, self.sphere_args = self.load_yml_config(
+            gnn_config_path=self.hparams.gnn_args,
+            sphere_config_path=self.hparams.geom_args,
+        )   
         self.model = MultiModalFusionRegressor(
             gnn_args=self.gnn_args, 
             sphere_args=self.sphere_args, 
-            model_args=self.model_args,
             mean=self.hparams.mean,
             std=self.hparams.std,
         )
-        
         self._reset_losses_dict()
 
     def configure_optimizers(self):
@@ -56,45 +52,28 @@ class SpectraLightningModule(LightningModule):
     def forward(self, batch):
         return self.model(batch)
     
-    def step(self, batch, stage):
+    def step(self, batch, loss_fn, stage):
         with torch.set_grad_enabled(stage == "train"):
-            pred, z1, z2 = self(batch)
-            losses = self._calculate_loss(batch, pred, z1, z2)
+            pred = self(batch)
+        
+        label = batch.y[batch.mask]
+        loss = 0.0
+        if stage in ["train", "val"]:
+            loss = loss_fn(pred, label)
+            self.losses[stage].append(loss.detach())
+        elif stage == "test":
+            self.losses[stage].append(loss.detach())
 
-        self.log(f"{stage}_loss", losses["total_loss"], on_step=(stage=="train"), on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
-        self.log(f"{stage}_label_loss", losses["label_loss"], on_step=False, on_epoch=True, prog_bar=False, logger=True, sync_dist=True)
-        self.log(f"{stage}_contrastive_loss", losses["contrastive_loss"], on_step=False, on_epoch=True, prog_bar=False, logger=True, sync_dist=True)
-
-        return {"loss": losses["total_loss"], "preds": pred} # 可以选择性返回预测值
-
+        return loss
 
     def training_step(self, batch, batch_idx):
-        result = self.step(batch, "train")
-        return result["loss"]
+        return self.step(batch, l1_loss, "train")
 
     def validation_step(self, batch, batch_idx):
-        result = self.step(batch, "val")
-        return result["loss"]
-    
-    def test_step(self, batch, batch_idx):
-        result = self.step(batch, "test")
-        return result["loss"]
-    
-    def _calc_loss(self, batch, pred, z1, z2):
-        if not hasattr(batch, 'y') or not hasattr(batch, 'mask'):
-            raise AttributeError("Batch object must have 'y' and 'mask' attributes for loss calculation.")
+        return self.step(batch, l1_loss, "val")
 
-        label = batch.y[batch.mask]
-        
-        total_loss, label_loss, contrastive_loss = self.model.calc_loss(
-            pred=pred, label=label, z1=z1, z2=z2
-        )    
-        
-        return {
-            "total_loss": total_loss,
-            "label_loss": label_loss,
-            "contrastive_loss": contrastive_loss
-        }
+    def test_step(self, batch, batch_idx):
+        return self.step(batch, l1_loss, "test")
 
     def optimizer_step(self, *args, **kwargs):
         optimizer = kwargs["optimizer"] if "optimizer" in kwargs else args[2]
@@ -108,8 +87,41 @@ class SpectraLightningModule(LightningModule):
                 pg["lr"] = lr_scale * self.hparams.lr
         super().optimizer_step(*args, **kwargs)
         optimizer.zero_grad()
+  
+    def on_validation_epoch_end(self):
+        if not self.trainer.sanity_checking:
+            result_dict = {
+                "epoch": float(self.current_epoch),
+                "lr": self.trainer.optimizers[0].param_groups[0]["lr"],
+                "train_loss": torch.stack(self.losses["train"]).mean(),
+                "val_loss": torch.stack(self.losses["val"]).mean(),
+            }
 
-    def load_yml_config(self, gnn_config_path, sphere_config_path, model_config_path):
+            # add test loss if available
+            if len(self.losses["test"]) > 0:
+                result_dict["test_loss"] = torch.stack(
+                    self.losses["test"]
+                ).mean()
+
+            self.log_dict(result_dict, prog_bar=True, sync_dist=True)
+
+        self._reset_losses_dict()
+
+    def on_test_epoch_end(self):
+        result_dict = {}
+        if len(self.losses["test"]) > 0:
+            result_dict["test_loss"] = torch.stack(self.losses["test"]).mean()
+        self.log_dict(result_dict, sync_dist=True)
+        self._reset_losses_dict()
+
+    def _reset_losses_dict(self):
+        self.losses = {
+            "train": [],
+            "val": [],
+            "test": [],
+        }
+
+    def load_yml_config(self, gnn_config_path, sphere_config_path):
         r"""
         load config from yml files
         """
@@ -125,10 +137,5 @@ class SpectraLightningModule(LightningModule):
         else:
             raise ValueError("sphere_config_path should be a yml file")
 
-        if model_config_path.endswith(".yml") or model_config_path.endswith(".yaml"):
-            with open(model_config_path, "r") as f:
-                model_config = yaml.load(f, Loader=yaml.FullLoader)
-        else:
-            raise ValueError("model_config_path should be a yml file")
+        return gnn_config, sphere_config
 
-        return gnn_config, sphere_config, model_config

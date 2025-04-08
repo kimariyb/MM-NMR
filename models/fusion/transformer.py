@@ -9,23 +9,61 @@ class BiCrossAttention(nn.Module):
     r"""
     Bi-directional cross-attention layer
     """
-    def __init__(self, hidden_dim, num_heads=4, head_dim=64, dropout=0.):
+    def __init__(self, d_2d, d_3d, d_model, num_heads=4, dropout=0.1):
         super().__init__()
-        self.attn_2d_to_3d = MultiHeadAttention(hidden_dim, num_heads, head_dim, dropout)
-        self.attn_3d_to_2d = MultiHeadAttention(hidden_dim, num_heads, head_dim, dropout)
+        self.num_heads = num_heads
+        self.d_model = d_model
+        self.head_dim = d_model // num_heads
+        
+        # 2D->3D
+        self.Wq_2d = nn.Linear(d_2d, d_model)
+        self.Wk_3d = nn.Linear(d_3d, d_model)
+        self.Wv_3d = nn.Linear(d_3d, d_model)
+        
+        # 3D->2D 
+        self.Wq_3d = nn.Linear(d_3d, d_model)
+        self.Wk_2d = nn.Linear(d_2d, d_model)
+        self.Wv_2d = nn.Linear(d_2d, d_model)
+        
+        # 输出层
+        self.out_2d3d = nn.Linear(d_model, d_model)
+        self.out_3d2d = nn.Linear(d_model, d_model)
 
-        self.norm = nn.LayerNorm(hidden_dim)
-    
-    def forward(self, feat_2d, feat_3d):
-        # 2d -> 3d
-        attn_2d, _ = self.attn_2d_to_3d(feat_2d, feat_3d, feat_3d)
-        attn_2d = self.norm(attn_2d)
-        
-        # 3d -> 2d
-        attn_3d, _ = self.attn_3d_to_2d(feat_3d, feat_2d, feat_2d)
-        attn_3d = self.norm(attn_3d)
-        
-        return attn_3d, attn_2d
+        self.layer_norm = nn.LayerNorm(d_model)
+        self.dropout = nn.Dropout(dropout)
+
+    def split_heads(self, x):
+        return x.view(x.size(0), self.num_heads, self.head_dim)
+
+    def forward(self, h_2d, h_3d):
+        # --- 2D->3D 方向 ---
+        Q_2d = self.split_heads(self.Wq_2d(h_2d))  # [N, num_heads, head_dim]
+        K_3d = self.split_heads(self.Wk_3d(h_3d))
+        V_3d = self.split_heads(self.Wv_3d(h_3d))
+
+        attn_scores_2d3d = torch.einsum('nhd,mhd->nhm', Q_2d, K_3d) / (self.head_dim**0.5)
+        attn_2d3d = torch.softmax(attn_scores_2d3d, dim=-1)
+
+        out_2d3d = torch.einsum('nhm,mhd->nhd', attn_2d3d, V_3d)
+        out_2d3d = out_2d3d.reshape(h_2d.size(0), self.d_model)
+        out_2d3d = self.out_2d3d(out_2d3d)
+
+        # --- 3D->2D 方向 ---
+        Q_3d = self.split_heads(self.Wq_3d(h_3d))
+        K_2d = self.split_heads(self.Wk_2d(h_2d))
+        V_2d = self.split_heads(self.Wv_2d(h_2d))
+
+        attn_scores_3d2d = torch.einsum('nhd,mhd->nhm', Q_3d, K_2d) / (self.head_dim**0.5)
+        attn_3d2d = torch.softmax(attn_scores_3d2d, dim=-1)
+
+        out_3d2d = torch.einsum('nhm,mhd->nhd', attn_3d2d, V_2d)
+        out_3d2d = out_3d2d.reshape(h_3d.size(0), self.d_model)
+        out_3d2d = self.out_3d2d(out_3d2d)
+
+        # 层归一化
+        fused = self.layer_norm(self.dropout(out_2d3d + out_3d2d))
+
+        return fused
 
 
 class TokenProjection(nn.Module):
@@ -63,10 +101,7 @@ class FeedForward(nn.Module):
         return self.net(x)
     
     
-class MultiHeadAttention(nn.Module):
-    r"""
-    Multi-head attention layer 
-    """
+class Attention(nn.Module):
     def __init__(self, input_dim, num_heads=8, head_dim=64, dropout=0.):
         super().__init__()
         inner_dim = head_dim *  num_heads
@@ -102,7 +137,7 @@ class MultiHeadAttention(nn.Module):
         out = rearrange(out, 'b h n d -> b n (h d)')
         out = self.to_out(out)
         
-        return attn, out
+        return out
             
             
 class Transformer(nn.Module):
@@ -116,17 +151,16 @@ class Transformer(nn.Module):
         
         for _ in range(num_layers):
             self.layers.append(nn.ModuleList([
-                MultiHeadAttention(input_dim, num_heads, head_dim, dropout),
+                Attention(input_dim, num_heads, head_dim, dropout),
                 FeedForward(input_dim, ffn_dim, dropout = dropout)
             ]))
 
     def forward(self, x):
         for attn, ff in self.layers:
-            _, out = attn(x)
-            out = out + x
-            out = ff(out) + out
+           x = attn(x) + x
+           x = ff(x) + x
 
-        return self.norm(out)
+        return self.norm(x)
 
 
 class VisionTransformer(nn.Module):

@@ -208,9 +208,9 @@ class GraphNet(nn.Module):
             raise ValueError("Invalid graph pooling type.")
         
         if self.JK == "concat":
-            self.graph_pred_linear = nn.Linear((self.num_layers + 1) * emb_dim, out_channels)
+            self.pred_linear = nn.Linear((self.num_layers + 1) * emb_dim, out_channels)
         else:
-            self.graph_pred_linear = nn.Linear(emb_dim, out_channels)
+            self.pred_linear = nn.Linear(emb_dim, out_channels)
 
         # List of batchnorms
         self.batch_norms = nn.ModuleList()
@@ -246,7 +246,6 @@ class GraphNet(nn.Module):
             raise ValueError("not implemented.")
         
         graph_representation = self.pool(node_representation, batch)
-        graph_representation = self.graph_pred_linear(graph_representation)
 
-        return graph_representation, node_representation
+        return self.pred_linear(graph_representation), self.pred_linear(node_representation)
 

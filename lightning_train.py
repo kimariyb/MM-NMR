@@ -44,14 +44,6 @@ def get_args():
         default='./configs/geometry.yml',
         help="Arguments for the geometry model (in yaml format)",
     )
-    
-    parser.add_argument(
-        "--model-args",
-        type=str,
-        default='./configs/model.yml',
-        help="Arguments for the model (in yaml format)",
-    )
-
     # training settings
     parser.add_argument(
         "--num-epochs", default=300, type=int, help="number of epochs"
@@ -100,7 +92,7 @@ def get_args():
         help="Name of the torch_geometric dataset. Default is carbon",
     )
     parser.add_argument(
-        "--dataset-root", default='./data', type=str, help="Data storage directory"
+        "--dataset-root", default='./data/dataset/', type=str, help="Data storage directory"
     )
     parser.add_argument(
         "--mean", default=None, type=float, help="Mean of the dataset"
@@ -130,7 +122,7 @@ def get_args():
     parser.add_argument(
         "--standardize",
         action=argparse.BooleanOptionalAction,
-        default=False,
+        default=True,
         help="If true, multiply prediction by dataset std and add mean",
     )
     parser.add_argument(
@@ -162,7 +154,13 @@ def get_args():
         default=6,
         help="Number of workers for data prefetch",
     )
-
+    parser.add_argument(
+        "--precision",
+        type=int,
+        default=32,
+        choices=[16, 32],
+        help="Floating point precision",
+    )
     parser.add_argument(
         "--log-dir", type=str, default="./logs", help="Log directory"
     )
@@ -181,6 +179,9 @@ def get_args():
         action=argparse.BooleanOptionalAction,
         default=False,
         help="Redirect stdout and stderr to log_dir/log",
+    )
+    parser.add_argument(
+        "--num-nodes", type=int, default=1, help="Number of nodes"
     )
     parser.add_argument(
         "--accelerator",
@@ -210,11 +211,7 @@ def get_args():
 def auto_exp(args):
     dir_name = (
         f"bs_{args.batch_size}"
-        + f"_L{args.num_layers}_D{args.embedding_dim}_F{args.ffn_embedding_dim}"
-        + f"_H{args.num_heads}_rbf_{args.num_rbf}"
-        + f"_norm_{args.norm_type}"
         + f"_lr_{args.lr}"
-        + f"_cutoff_{args.cutoff}"
         + f"_seed_{args.seed}"
     )
 
@@ -258,7 +255,7 @@ def main():
     data.prepare_dataset()
     args.mean, args.std = data.mean, data.std
 
-    model = SpectraLightningModule(args)
+    model = SpectraLightningModule(args).to(device)
 
     csv_logger = CSVLogger(args.log_dir, name="metrics", version="")
     lr_monitor = LearningRateMonitor(logging_interval="epoch")
