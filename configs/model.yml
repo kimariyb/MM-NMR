@@ -1,0 +1,5 @@
+proj_dim: 256
+hidden_dim: 256
+head_dim: 32
+num_heads: 8
+dropout: 0.2

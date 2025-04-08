@@ -381,8 +381,6 @@ class SphereNet(nn.Module):
         Number of residual layers after skip connection. Default is 2.
     num_output_layers : int, optional
         Number of output layers. Default is 3.
-    act : function, optional
-        Activation function. Default is swish.
     output_init : str, optional
         Initialization of the output layers. Default is 'GlorotOrthogonal'.
     use_node_features : bool, optional
@@ -405,7 +403,6 @@ class SphereNet(nn.Module):
         num_before_skip=1, 
         num_after_skip=2, 
         num_output_layers=3,
-        act=swish, 
         output_init='GlorotOrthogonal', 
         use_node_features=True
     ):
@@ -416,7 +413,7 @@ class SphereNet(nn.Module):
         self.init_e = Init(
             num_radial, 
             hidden_channels,
-            act, 
+            swish, 
             use_node_features=use_node_features
         )
         
@@ -425,7 +422,7 @@ class SphereNet(nn.Module):
             out_emb_channels, 
             out_channels, 
             num_output_layers, 
-            act, 
+            swish, 
             output_init
         )
         
@@ -444,7 +441,7 @@ class SphereNet(nn.Module):
                 out_emb_channels, 
                 out_channels, 
                 num_output_layers, 
-                act, 
+                swish, 
                 output_init
             ) for _ in range(num_layers)])
 
@@ -459,7 +456,7 @@ class SphereNet(nn.Module):
                 num_radial, 
                 num_before_skip, 
                 num_after_skip,
-                act
+                swish
             ) for _ in range(num_layers)])
 
         self.update_us = torch.nn.ModuleList([UpdateU() for _ in range(num_layers)])

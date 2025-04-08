@@ -96,14 +96,14 @@ class MultiModalFusionRegressor(nn.Module):
 
         # Projection
         self.pro_t = nn.Sequential(
-            nn.Linear(self.gnn_args.hiiden_dim, self.model_args.proj_dim), 
-            nn.ReLU(inplace=True),
+            nn.Linear(self.gnn_args.out_channels, self.model_args.proj_dim), 
+            nn.SiLU(inplace=True),
             nn.Linear(self.model_args.proj_dim, self.model_args.proj_dim)
         )
         
         self.pro_g = nn.Sequential(
-            nn.Linear(self.sphere_args.hidden_dim, self.model_args.proj_dim), 
-            nn.ReLU(inplace=True),
+            nn.Linear(self.sphere_args.out_channels, self.model_args.proj_dim), 
+            nn.SiLU(inplace=True),
             nn.Linear(self.model_args.proj_dim, self.model_args.proj_dim)
         )
         
@@ -129,11 +129,11 @@ class MultiModalFusionRegressor(nn.Module):
     def forward(self, data):
         x, edge_index, edge_attr, pos, z, batch, mask = data.x, data.edge_index, data.edge_attr, data.pos, data.z, data.batch, data.mask
         # get the node representations
-        graph_t, node_t = self.gnn(x, edge_index, edge_attr, batch)
-        graph_g, node_g = self.sphere(z, pos, batch)
+        graph_t, node_t = self.gnn(x, edge_index, edge_attr, batch) # (batch_size, out_channels), (num_nodes, out_channels)
+        graph_g, node_g = self.sphere(z, pos, batch) # (batch_size, out_channels), (num_nodes, out_channels)
         
         # bi-cross attention
-        graph_t, graph_g = self.cross_attn(graph_t, graph_g)    
+        graph_t, graph_g = self.cross_attn(graph_t, graph_g) # (batch_size, hidden_dim), (batch_size, hidden_dim)
         
         # fusion node representations
         node_fused = self.node_fusion(torch.cat([node_t, node_g], dim=-1))
