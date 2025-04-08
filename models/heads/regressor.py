@@ -151,13 +151,13 @@ class MultiModalFusionRegressor(nn.Module):
         proj_t = self.pro_t(graph_t)
         proj_g = self.pro_g(graph_g)
         
-        return nmr_pred, proj_t, proj_g, mask
+        return nmr_pred, proj_t, proj_g
 
-    def calc_label_loss(self, pred, label, mask):
+    def calc_label_loss(self, pred, label):
         r"""
-        Calculate the label loss.
+        Calculate the label MAE loss.
         """
-        return self.mae_loss(pred, label[mask])
+        return self.mae_loss(pred, label)
 
     def calc_contrastive_loss(self, x1, x2, T=0.1):
         r"""
@@ -179,8 +179,33 @@ class MultiModalFusionRegressor(nn.Module):
 
         return loss
 
-    def calc_loss(self, pred, label, mask, z1, z2, alpha=0.8):
-        loss1 = self.calc_label_loss(pred, label, mask)
+    def calc_loss(self, pred, label, z1, z2, alpha=0.8):
+        r"""
+        Calculate the total loss.
+        
+        Parameters
+        ----------
+        pred : torch.Tensor
+            Predicted values.
+        label : torch.Tensor
+            Ground-truth values.
+        z1 : torch.Tensor
+            Contrastive features for view 1.
+        z2 : torch.Tensor
+            Contrastive features for view 2.
+        alpha : float, optional
+            Weight for contrastive loss. (default: :obj:`0.8`)
+        
+        Returns
+        -------
+        loss : torch.Tensor
+            Total loss.
+        loss1 : torch.Tensor
+            Label loss.
+        loss2 : torch.Tensor
+            Contrastive loss.
+        """
+        loss1 = self.calc_label_loss(pred, label)
         loss2 = self.calc_contrastive_loss(z1, z2)
 
         loss = loss1 + alpha * loss2
