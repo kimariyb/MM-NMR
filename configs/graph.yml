@@ -1,4 +1,4 @@
-num_layers: 6
+num_layers: 4
 emb_dim: 256
 out_channels: 128
 JK: 'last'
