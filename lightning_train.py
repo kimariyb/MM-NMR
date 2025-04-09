@@ -5,7 +5,7 @@ import argparse
 import torch
 import pytorch_lightning as pl
 
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, ModelSummary, LearningRateMonitor
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger
 from pytorch_lightning.strategies import SingleDeviceStrategy
 
@@ -111,7 +111,7 @@ def get_args():
         help="Reload dataloaders every n epoch",
     )
     parser.add_argument(
-        "--batch-size", default=32, type=int, help="batch size"
+        "--batch-size", default=256, type=int, help="batch size"
     )
     parser.add_argument(
         "--inference-batch-size",
@@ -253,12 +253,11 @@ def main():
 
     data = SpectraDataModule(args)
     data.prepare_dataset()
-    args.mean, args.std = data.mean, data.std
+    args.mean, args.std = float(data.mean), float(data.std)
 
     model = SpectraLightningModule(args).to(device)
 
     csv_logger = CSVLogger(args.log_dir, name="metrics", version="")
-    lr_monitor = LearningRateMonitor(logging_interval="epoch")
 
     if args.task == "train":
         checkpoint_callback = ModelCheckpoint(
@@ -288,7 +287,7 @@ def main():
             accelerator=args.accelerator,
             deterministic=True,
             default_root_dir=args.log_dir,
-            callbacks=[early_stopping, checkpoint_callback, lr_monitor],
+            callbacks=[early_stopping, checkpoint_callback],
             logger=[tb_logger, csv_logger],
             reload_dataloaders_every_n_epochs=args.reload,
             precision=args.precision,

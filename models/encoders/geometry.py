@@ -11,7 +11,7 @@ from torch_geometric.nn.inits import glorot_orthogonal
 from math import pi as PI
 from math import sqrt
 
-from models.encoders.utils import bessel_basis, real_sph_harm, swish, xyz2data
+from models.encoders.utils import bessel_basis, real_sph_harm, xyz2data
 
 
 class Envelope(nn.Module):
@@ -150,9 +150,9 @@ class EmbeddingBlock(nn.Module):
     
 
 class ResidualLayer(nn.Module):
-    def __init__(self, hidden_channels, act=swish):
+    def __init__(self, hidden_channels):
         super(ResidualLayer, self).__init__()
-        self.act = act
+        self.act = nn.SiLU()
         self.lin1 = nn.Linear(hidden_channels, hidden_channels)
         self.lin2 = nn.Linear(hidden_channels, hidden_channels)
 
@@ -169,9 +169,9 @@ class ResidualLayer(nn.Module):
 
 
 class Init(nn.Module):
-    def __init__(self, num_radial, hidden_channels, act=swish, use_node_features=True):
+    def __init__(self, num_radial, hidden_channels, use_node_features=True):
         super(Init, self).__init__()
-        self.act = act
+        self.act = nn.SiLU()
         self.use_node_features = use_node_features
         
         if self.use_node_features:
@@ -207,10 +207,11 @@ class Init(nn.Module):
     
     
 class UpdateE(nn.Module):
-    def __init__(self, hidden_channels, int_emb_size, basis_emb_size_dist, basis_emb_size_angle, basis_emb_size_torsion, num_spherical, num_radial,
-        num_before_skip, num_after_skip, act=swish):
+    def __init__(self, hidden_channels, int_emb_size, basis_emb_size_dist,
+        basis_emb_size_angle, basis_emb_size_torsion, num_spherical, num_radial,
+        num_before_skip, num_after_skip):
         super(UpdateE, self).__init__()
-        self.act = act
+        self.act = nn.SiLU()
         self.lin_rbf1 = nn.Linear(num_radial, basis_emb_size_dist, bias=False)
         self.lin_rbf2 = nn.Linear(basis_emb_size_dist, hidden_channels, bias=False)
         self.lin_sbf1 = nn.Linear(num_spherical * num_radial, basis_emb_size_angle, bias=False)
@@ -226,12 +227,12 @@ class UpdateE(nn.Module):
         self.lin_up = nn.Linear(int_emb_size, hidden_channels, bias=False)
 
         self.layers_before_skip = nn.ModuleList([
-            ResidualLayer(hidden_channels, act)
+            ResidualLayer(hidden_channels)
             for _ in range(num_before_skip)
         ])
         self.lin = nn.Linear(hidden_channels, hidden_channels)
         self.layers_after_skip = nn.ModuleList([
-            ResidualLayer(hidden_channels, act)
+            ResidualLayer(hidden_channels)
             for _ in range(num_after_skip)
         ])
 
@@ -298,9 +299,10 @@ class UpdateE(nn.Module):
     
 
 class UpdateV(nn.Module):
-    def __init__(self, hidden_channels, out_emb_channels, out_channels, num_output_layers, act, output_init):
+    def __init__(self, hidden_channels, out_emb_channels, out_channels, 
+        num_output_layers, output_init):
         super(UpdateV, self).__init__()
-        self.act = act
+        self.act = nn.SiLU()
         self.output_init = output_init
 
         self.lin_up = nn.Linear(hidden_channels, out_emb_channels, bias=True)
@@ -413,7 +415,6 @@ class SphereNet(nn.Module):
         self.init_e = Init(
             num_radial, 
             hidden_channels,
-            swish, 
             use_node_features
         )
         
@@ -422,7 +423,6 @@ class SphereNet(nn.Module):
             out_emb_channels, 
             out_channels, 
             num_output_layers, 
-            swish, 
             output_init
         )
         
@@ -441,7 +441,6 @@ class SphereNet(nn.Module):
                 out_emb_channels, 
                 out_channels, 
                 num_output_layers, 
-                swish, 
                 output_init
             ) for _ in range(num_layers)])
 
@@ -456,7 +455,6 @@ class SphereNet(nn.Module):
                 num_radial, 
                 num_before_skip, 
                 num_after_skip,
-                swish
             ) for _ in range(num_layers)])
 
         self.update_us = torch.nn.ModuleList([UpdateU() for _ in range(num_layers)])

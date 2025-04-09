@@ -9,10 +9,6 @@ from torch_scatter import scatter
 from math import pi as PI
 
 
-def swish(x):
-    return x * torch.sigmoid(x)
-
-
 def Jn(r, n):
     return np.sqrt(np.pi / (2 * r)) * special.jv(n + 0.5, r)
 

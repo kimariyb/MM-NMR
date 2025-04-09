@@ -1,5 +1,5 @@
 cutoff: 5.0
-num_layers: 4
+num_layers: 3
 hidden_channels: 256
 out_channels: 128
 int_emb_size: 64
@@ -12,6 +12,6 @@ num_radial: 6
 envelope_exponent: 5
 num_before_skip: 1
 num_after_skip: 2
-num_output_layers: 1
+num_output_layers: 3
 output_init: 'GlorotOrthogonal'
 use_node_features: True

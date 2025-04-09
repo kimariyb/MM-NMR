@@ -55,15 +55,15 @@ class SpectraLightningModule(LightningModule):
     def step(self, batch, loss_fn, stage):
         with torch.set_grad_enabled(stage == "train"):
             pred = self(batch)
-        
-        label = batch.y[batch.mask]
-        loss = 0.0
-        if stage in ["train", "val"]:
+            label = batch.y[batch.mask]
+            
+            # unsqueeze the label and pred
+            pred = pred.unsqueeze(-1)
+            label = label.unsqueeze(-1)
+            # calculate loss
             loss = loss_fn(pred, label)
             self.losses[stage].append(loss.detach())
-        elif stage == "test":
-            self.losses[stage].append(loss.detach())
-
+    
         return loss
 
     def training_step(self, batch, batch_idx):

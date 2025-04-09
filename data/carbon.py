@@ -34,15 +34,8 @@ class CarbonDataset(InMemoryDataset):
     def process(self):
         data_list = []
         suppl = Chem.SDMolSupplier(os.path.join(self.raw_dir, self.raw_file_names))
-        
-        count = 0
-        
-        for mol in tqdm(suppl, desc="Processing carbon dataset", unit="mol", ncols=100, total=len(suppl)):
-            # test 
-            if count > 100:
-                break
-            count += 1
-            
+                
+        for mol in tqdm(suppl, desc="Processing carbon dataset", unit="mol", ncols=100, total=len(suppl)):            
             if mol is None:
                 continue
             
@@ -73,17 +66,12 @@ class CarbonDataset(InMemoryDataset):
             data.edge_attr = torch.tensor(graph['edge_feat'], dtype=torch.float)
             
             # create the shift tensor and mask tensor
-            shift_tensor = torch.zeros(mol.GetNumAtoms(), 2)
+            shift_tensor = torch.zeros(mol.GetNumAtoms(), 1)
             mask_tensor = torch.zeros(mol.GetNumAtoms(), 1)
             
             # get shift and mask tensors
             for i, atom in enumerate(mol.GetAtoms()):
-                # shift tensor is a tensor of shape (num_atoms, 2)
-                # where the first column is the atom index and the second column is the shift value
-                shift_tensor[i, 0] = i
-                shift_tensor[i, 1] = float(atom.GetProp('shift'))
-                
-                # mask tensor is a tensor of shape (num_atoms, 1)
+                shift_tensor[i] = float(atom.GetProp('shift'))
                 mask_tensor[i] = float(atom.GetBoolProp('mask'))
                 
             data.y = shift_tensor.clone().detach().to(torch.float)

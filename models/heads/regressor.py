@@ -30,7 +30,22 @@ class MultiModalFusionRegressor(nn.Module):
         super().__init__()
         self.gnn_args = gnn_args
         self.sphere_args = sphere_args
-        
+
+        # GNN
+        self.gnn = GraphNet(**gnn_args)
+        self.norm_2d = nn.LayerNorm(self.gnn_args['out_channels'])
+        self.drop_2d = nn.Dropout(0.2)
+        # Spherenet
+        self.sphere = SphereNet(**sphere_args)
+        self.norm_3d = nn.LayerNorm(self.sphere_args['out_channels'])
+        self.drop_3d = nn.Dropout(0.2)
+
+        # Cross-attention
+        self.cross_attn = BiCrossAttention(self.gnn_args['out_channels'], self.sphere_args['out_channels'], 4)
+        self.fusion_dim = self.gnn_args['out_channels'] + self.sphere_args['out_channels']
+        # Predict head
+        self.predictor = PredictorRegressor(self.fusion_dim)
+
         mean = torch.scalar_tensor(0) if mean is None else mean
         if not isinstance(mean, torch.Tensor):
             mean = torch.tensor(mean).float()
@@ -41,59 +56,24 @@ class MultiModalFusionRegressor(nn.Module):
             std = torch.tensor(std).float()
         self.register_buffer('std', std)
 
-        self.mae_loss = nn.L1Loss()
-        
-        # GNN
-        self.gnn = GraphNet(**gnn_args)
-        
-        # Spherenet
-        self.sphere = SphereNet(**sphere_args)
-
-        # Projection
-        self.pro_t = nn.Sequential(
-            nn.Linear(self.gnn_args['out_channels'], 256), 
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 256)
-        )
-        
-        self.pro_g = nn.Sequential(
-            nn.Linear(self.sphere_args['out_channels'], 256), 
-            nn.ReLU(inplace=True),
-            nn.Linear(256, 256)
-        )
-        
-        # Bi-Cross attention Fusion
-        self.fusion_dim = self.gnn_args['out_channels'] + self.sphere_args['out_channels']
-        self.cross_attn = BiCrossAttention(
-            d_2d=self.gnn_args['out_channels'],
-            d_3d=self.sphere_args['out_channels'],
-            d_model=self.fusion_dim,
-            num_heads=8,
-            dropout=0.2
-        )
-
-        # Predict head
-        self.predictor = PredictorRegressor(self.fusion_dim)
-
     def forward(self, data):
         x, edge_index, edge_attr, pos, z, batch, mask = data.x, data.edge_index, data.edge_attr, data.pos, data.z, data.batch, data.mask
         # get the node representations
         _, node_t = self.gnn(x, edge_index, edge_attr, batch) # (batch_size, out_channels), (num_nodes, out_channels)
         _, node_g = self.sphere(z, pos, batch) # (batch_size, out_channels), (num_nodes, out_channels)
         
-        # fusion node representations
-        node_fused = self.cross_attn(node_t, node_g)
-        
+        node_t = self.norm_2d(self.drop_2d(node_t))
+        node_g = self.norm_3d(self.drop_3d(node_g))
+
+        # fuse the node representations
+        node_fused = self.cross_attn(node_t, node_g) # (batch_size, out_channels * 2)
+
         # predict and normalize
-        pred = self.predictor(node_fused)
+        pred = self.predictor(node_fused.clamp(-1e4, 1e4))
         nmr_pred = pred[mask]
+      
+        return (nmr_pred * self.std) + self.mean
 
-        if self.std is not None:
-            nmr_pred = nmr_pred * self.std
-        if self.mean is not None:
-            nmr_pred = nmr_pred + self.mean
-
-        return nmr_pred
 
 
    

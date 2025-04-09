@@ -1,69 +1,60 @@
+import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from einops import rearrange, repeat, pack, unpack
 from einops.layers.torch import Rearrange
 
 
+class CrossAttention(nn.Module):
+    r"""
+    Cross Attention Layer
+    """
+    def __init__(self, feat_1_dim, feat_2_dim, num_heads):
+        super(CrossAttention, self).__init__()
+        self.dim = feat_1_dim
+        self.num_heads = num_heads
+        self.q_proj = nn.Linear(feat_1_dim, feat_1_dim)
+        self.kv_proj = nn.Linear(feat_2_dim, 2 * feat_2_dim)
+        self.head_dim = feat_1_dim // num_heads
+        self.scale = 1 / math.sqrt(self.head_dim)  
+
+        self.out_proj = nn.Sequential(
+            nn.Linear(feat_1_dim, feat_1_dim),
+            nn.LayerNorm(feat_1_dim)
+        )
+    
+    def forward(self, feat_1, feat_2):
+        q = self.q_proj(feat_1) 
+        k, v = self.kv_proj(feat_2).chunk(2, dim=-1)
+
+        q = q.view(-1, self.num_heads, self.head_dim)
+        k = k.view(-1, self.num_heads, self.head_dim)
+        v = v.view(-1, self.num_heads, self.head_dim)
+
+        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = F.softmax(attn, dim=-1) + 1e-6
+
+        out = (attn @ v).transpose(1, 2).reshape(-1, self.dim)
+
+        return self.out_proj(out + feat_1)
+
+
 class BiCrossAttention(nn.Module):
     r"""
-    Bi-directional cross-attention layer
+    Bi-Cross Attention Layer
     """
-    def __init__(self, d_2d, d_3d, d_model, num_heads=4, dropout=0.1):
+    def __init__(self, dim_2d, dim_3d, num_heads):
         super().__init__()
-        self.num_heads = num_heads
-        self.d_model = d_model
-        self.head_dim = d_model // num_heads
-        
-        # 2D->3D
-        self.Wq_2d = nn.Linear(d_2d, d_model)
-        self.Wk_3d = nn.Linear(d_3d, d_model)
-        self.Wv_3d = nn.Linear(d_3d, d_model)
-        
-        # 3D->2D 
-        self.Wq_3d = nn.Linear(d_3d, d_model)
-        self.Wk_2d = nn.Linear(d_2d, d_model)
-        self.Wv_2d = nn.Linear(d_2d, d_model)
-        
-        # 输出层
-        self.out_2d3d = nn.Linear(d_model, d_model)
-        self.out_3d2d = nn.Linear(d_model, d_model)
+        self.attn_2d_to_3d = CrossAttention(dim_2d, dim_3d, num_heads)
+        self.attn_3d_to_2d = CrossAttention(dim_3d, dim_2d, num_heads)
+    
+    def forward(self, feat_2d, feat_3d):
+        feat_2d = self.attn_2d_to_3d(feat_2d, feat_3d)
+        feat_3d = self.attn_3d_to_2d(feat_3d, feat_2d)
 
-        self.layer_norm = nn.LayerNorm(d_model)
-        self.dropout = nn.Dropout(dropout)
-
-    def split_heads(self, x):
-        return x.view(x.size(0), self.num_heads, self.head_dim)
-
-    def forward(self, h_2d, h_3d):
-        # --- 2D->3D 方向 ---
-        Q_2d = self.split_heads(self.Wq_2d(h_2d))  # [N, num_heads, head_dim]
-        K_3d = self.split_heads(self.Wk_3d(h_3d))
-        V_3d = self.split_heads(self.Wv_3d(h_3d))
-
-        attn_scores_2d3d = torch.einsum('nhd,mhd->nhm', Q_2d, K_3d) / (self.head_dim**0.5)
-        attn_2d3d = torch.softmax(attn_scores_2d3d, dim=-1)
-
-        out_2d3d = torch.einsum('nhm,mhd->nhd', attn_2d3d, V_3d)
-        out_2d3d = out_2d3d.reshape(h_2d.size(0), self.d_model)
-        out_2d3d = self.out_2d3d(out_2d3d)
-
-        # --- 3D->2D 方向 ---
-        Q_3d = self.split_heads(self.Wq_3d(h_3d))
-        K_2d = self.split_heads(self.Wk_2d(h_2d))
-        V_2d = self.split_heads(self.Wv_2d(h_2d))
-
-        attn_scores_3d2d = torch.einsum('nhd,mhd->nhm', Q_3d, K_2d) / (self.head_dim**0.5)
-        attn_3d2d = torch.softmax(attn_scores_3d2d, dim=-1)
-
-        out_3d2d = torch.einsum('nhm,mhd->nhd', attn_3d2d, V_2d)
-        out_3d2d = out_3d2d.reshape(h_3d.size(0), self.d_model)
-        out_3d2d = self.out_3d2d(out_3d2d)
-
-        # 层归一化
-        fused = self.layer_norm(self.dropout(out_2d3d + out_3d2d))
-
-        return fused
+        return torch.cat([feat_2d, feat_3d], dim=-1)
 
 
 class TokenProjection(nn.Module):

@@ -8,6 +8,7 @@ from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities import rank_zero_only
 
 from data.carbon import CarbonDataset
+from data.hydrogen import HydrogenDataset
 from lightning_utils import make_splits
 
 
@@ -26,8 +27,10 @@ class SpectraDataModule(LightningDataModule):
         if self.hparams["dataset"] == "carbon":
             self.dataset = CarbonDataset(os.path.join(self.hparams["dataset_root"], "carbon"))
         elif self.hparams["dataset"] == "hydrogen":
-            raise NotImplementedError
-        
+            self.dataset = HydrogenDataset(os.path.join(self.hparams["dataset_root"], "hydrogen"))
+        else:
+            raise ValueError("Dataset not supported")
+            
         self.idx_train, self.idx_val, self.idx_test = make_splits(
             dataset_len=len(self.dataset), 
             train_size=self.hparams["train_size"],
