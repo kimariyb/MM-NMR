@@ -27,11 +27,10 @@ class MultiModalFusionRegressor(nn.Module):
     r"""
     Multi-modal fusion regressor module. 
     """
-    def __init__(self, gnn_args, geom_args, fusion_dim, num_heads, mean, std):
+    def __init__(self, gnn_args, geom_args, num_heads, mean, std):
         super().__init__()
         self.gnn_args = gnn_args
         self.geom_args = geom_args
-        self.fusion_dim = fusion_dim
         self.num_heads = num_heads
 
         # GNN

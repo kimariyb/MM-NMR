@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn.functional import l1_loss
 from pytorch_lightning import LightningModule
 
-from models.heads.regressor import MultiModalFusionRegressor
+from models.regressor import MultiModalFusionRegressor
 
 
 class SpectraLightningModule(LightningModule):
@@ -20,7 +20,6 @@ class SpectraLightningModule(LightningModule):
         self.model = MultiModalFusionRegressor(
             gnn_args=self.gnn_args, 
             geom_args=self.geom_args, 
-            fusion_dim=self.hparams.fusion_dim,
             num_heads=self.hparams.num_heads,
             mean=self.hparams.mean,
             std=self.hparams.std,

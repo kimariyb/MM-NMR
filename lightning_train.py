@@ -44,14 +44,6 @@ def get_args():
         default='./configs/geometry.yml',
         help="Arguments for the geometry model (in yaml format)",
     )
-    
-    parser.add_argument(
-        "--fusion-dim",
-        type=int,
-        default=128,
-        help="Dimension of the fusion layer",
-    )
-
     parser.add_argument(
         "--num-heads",
         type=int,
@@ -228,7 +220,6 @@ def auto_exp(args):
     dir_name = (
         f"bs_{args.batch_size}"
         + f"_lr_{args.lr}"
-        + f"_fusion_{args.fusion_dim}"
         + f"_heads_{args.num_heads}"
         + f"_seed_{args.seed}"
     )

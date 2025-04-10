@@ -142,7 +142,7 @@ class GATConv(MessagePassing):
         return aggr_out
 
 
-class GraphNet(nn.Module):
+class GNNComplete(nn.Module):
     r"""
     Graph Neural Network (GNN) model.
     
@@ -170,7 +170,7 @@ class GraphNet(nn.Module):
         if num_layers < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
 
-        super(GraphNet, self).__init__()
+        super(GNNComplete, self).__init__()
         self.dropout = dropout
         self.num_layers = num_layers
         self.JK = JK

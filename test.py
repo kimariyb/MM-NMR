@@ -1,7 +1,7 @@
 from data import carbon
 from torch_geometric.loader import DataLoader
 
-from models.heads.regressor import MultiModalFusionRegressor
+from models.regressor import MultiModalFusionRegressor
 from models.encoders.geometry import SphereNet
 from models.encoders.graph import GraphNet
 

@@ -25,18 +25,11 @@ class SpectraDataModule(LightningDataModule):
 
     def prepare_dataset(self):
         if self.hparams["dataset"] == "carbon":
-            dataset = CarbonDataset(os.path.join(self.hparams["dataset_root"], "carbon"))
+            self.dataset = CarbonDataset(os.path.join(self.hparams["dataset_root"], "carbon"))
         elif self.hparams["dataset"] == "hydrogen":
-            dataset = HydrogenDataset(os.path.join(self.hparams["dataset_root"], "hydrogen"))
+            self.dataset = HydrogenDataset(os.path.join(self.hparams["dataset_root"], "hydrogen"))
         else:
             raise ValueError("Dataset not supported")
-
-        # filter the invalid inchi keys
-        invaild_inchi_key = {
-            'ACXINOREANYYEN-UHFFFAOYSA-N', 'JUASNUGVQBWXIG-UHFFFAOYSA-L', 'GCMGKIRQMUNHPO-UHFFFAOYSA-L'
-        }
-
-        self.dataset = dataset.filter_invalid_inchi(invaild_inchi_key)
             
         self.idx_train, self.idx_val, self.idx_test = make_splits(
             dataset_len=len(self.dataset), 
