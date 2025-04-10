@@ -48,7 +48,7 @@ def get_args():
     parser.add_argument(
         "--fusion-dim",
         type=int,
-        default=256,
+        default=128,
         help="Dimension of the fusion layer",
     )
 
@@ -74,7 +74,7 @@ def get_args():
     parser.add_argument(
         "--lr-patience",
         type=int,
-        default=10,
+        default=50,
         help="Patience for lr-schedule. Patience per eval-interval of validation",
     )
     parser.add_argument(
@@ -86,11 +86,11 @@ def get_args():
     parser.add_argument(
         "--lr-factor",
         type=float,
-        default=0.8,
+        default=0.5,
         help="Minimum learning rate before early stop",
     )
     parser.add_argument(
-        "--weight-decay", type=float, default=1e-5, help="Weight decay strength"
+        "--weight-decay", type=float, default=1e-4, help="Weight decay strength"
     )
     parser.add_argument(
         "--early-stopping-patience",

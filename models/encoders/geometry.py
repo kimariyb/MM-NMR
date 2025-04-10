@@ -233,8 +233,10 @@ class SimpleInteractionBlock(torch.nn.Module):
         # Dense transformations of input messages.
         self.lin = Linear(hidden_channels, hidden_channels)
         self.lins = nn.ModuleList()
+
         for _ in range(num_layers):
             self.lins.append(Linear(hidden_channels, hidden_channels))
+
         self.final = Linear(hidden_channels, output_channels)
 
         self.reset_parameters()
@@ -277,6 +279,7 @@ class SimpleInteractionBlock(torch.nn.Module):
         h = h + x
         for lin in self.lins:
             h = self.act(lin(h)) + h
+
         h = self.norm(h, batch)
         h = self.final(h)
         
@@ -304,6 +307,8 @@ class ComENet(nn.Module):
         Number of spherical harmonics. (default: :obj:`2`)
     num_output_layers: int, optional
         Number of linear layers for the output blocks. (default: :obj:`3`)
+    dropout: float, optional
+        Dropout probability. (default: :obj:`0.0`)
     
     Inputs
     ------
@@ -328,10 +333,12 @@ class ComENet(nn.Module):
         num_radial=3,
         num_spherical=2,
         num_output_layers=3,
+        dropout=0.,
     ):
         super(ComENet, self).__init__()
         self.cutoff = cutoff
         self.num_layers = num_layers
+        self.dropout = dropout
 
         if sym is None:
             raise ImportError("Package `sympy` could not be found.")
@@ -472,9 +479,11 @@ class ComENet(nn.Module):
         # Interaction blocks.
         for interaction_block in self.interaction_blocks:
             x = interaction_block(x, feature1, feature2, edge_index, batch)
+            x = F.dropout(x, p=self.dropout, training=self.training)
 
         for lin in self.lins:
             x = self.act(lin(x))
-
+            x = F.dropout(x, p=self.dropout, training=self.training)
+            
         return x
 

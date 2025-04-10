@@ -40,6 +40,7 @@ class SpectraLightningModule(LightningModule):
             factor=self.hparams.lr_factor,
             patience=self.hparams.lr_patience,
             min_lr=self.hparams.lr_min,
+            cooldown=20
         )
         
         lr_scheduler = {

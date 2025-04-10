@@ -1,5 +1,5 @@
-num_layers: 2
+num_layers: 6
 hidden_dim: 128
-JK: 'sum'
+JK: 'last'
 dropout: 0.2
 gnn_type: 'gin'

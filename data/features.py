@@ -208,8 +208,13 @@ def mol2geometry(mol):
         params.useMacrocycleTorsions = True
         params.pruneRmsThresh = 0.001
         params.maxAttempts = 10000
-        AllChem.EmbedMolecule(mol, params)
         
+        # Embed the molecule
+        AllChem.EmbedMolecule(mol, params)
+        # MMFF optimization
+        AllChem.MMFFOptimizeMolecule(mol)
+        
+        # Remove Hs
         mol = Chem.RemoveHs(mol)
         pos = mol.GetConformer().GetPositions()
         z = [atom.GetAtomicNum() for atom in mol.GetAtoms()]
