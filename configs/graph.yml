@@ -1,7 +1,5 @@
-num_layers: 6
-emb_dim: 256
-out_channels: 128
-JK: 'last'
-drop_ratio: 0.2
+num_layers: 4
+hidden_dim: 128
+JK: 'sum'
+dropout: 0.2
 gnn_type: 'gin'
-graph_pooling: 'mean'

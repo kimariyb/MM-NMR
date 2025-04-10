@@ -1,60 +1,8 @@
-import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from einops import rearrange, repeat, pack, unpack
 from einops.layers.torch import Rearrange
-
-
-class CrossAttention(nn.Module):
-    r"""
-    Cross Attention Layer
-    """
-    def __init__(self, feat_1_dim, feat_2_dim, num_heads):
-        super(CrossAttention, self).__init__()
-        self.dim = feat_1_dim
-        self.num_heads = num_heads
-        self.q_proj = nn.Linear(feat_1_dim, feat_1_dim)
-        self.kv_proj = nn.Linear(feat_2_dim, 2 * feat_2_dim)
-        self.head_dim = feat_1_dim // num_heads
-        self.scale = 1 / math.sqrt(self.head_dim)  
-
-        self.out_proj = nn.Sequential(
-            nn.Linear(feat_1_dim, feat_1_dim),
-            nn.LayerNorm(feat_1_dim)
-        )
-    
-    def forward(self, feat_1, feat_2):
-        q = self.q_proj(feat_1) 
-        k, v = self.kv_proj(feat_2).chunk(2, dim=-1)
-
-        q = q.view(-1, self.num_heads, self.head_dim)
-        k = k.view(-1, self.num_heads, self.head_dim)
-        v = v.view(-1, self.num_heads, self.head_dim)
-
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = F.softmax(attn, dim=-1) + 1e-6
-
-        out = (attn @ v).transpose(1, 2).reshape(-1, self.dim)
-
-        return self.out_proj(out + feat_1)
-
-
-class BiCrossAttention(nn.Module):
-    r"""
-    Bi-Cross Attention Layer
-    """
-    def __init__(self, dim_2d, dim_3d, num_heads):
-        super().__init__()
-        self.attn_2d_to_3d = CrossAttention(dim_2d, dim_3d, num_heads)
-        self.attn_3d_to_2d = CrossAttention(dim_3d, dim_2d, num_heads)
-    
-    def forward(self, feat_2d, feat_3d):
-        feat_2d = self.attn_2d_to_3d(feat_2d, feat_3d)
-        feat_3d = self.attn_3d_to_2d(feat_3d, feat_2d)
-
-        return torch.cat([feat_2d, feat_3d], dim=-1)
 
 
 class TokenProjection(nn.Module):

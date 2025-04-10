@@ -1,7 +1,7 @@
 import numpy as np
 
 from rdkit import Chem, RDLogger
-from rdkit.Chem import rdchem, rdForceFieldHelpers, AllChem
+from rdkit.Chem import rdchem, AllChem
 
 
 RDLogger.DisableLog('rdApp.*')
@@ -181,98 +181,42 @@ def mol2graph(mol: rdchem.Mol):
     return graph
 
 
-def generate_conformers(mol, num_confs=10):
+def mol2geometry(mol):
     r"""
-    Generate conformers for a molecule.
-    
+    Convert a molecule to a geometry representation.
+
     Parameters
     ----------
     mol : rdkit.Chem.rdchem.Mol
-        The input molecule.
-    num_confs : int
-        The number of conformers to generate.
-    
+        The molecule to convert.
+
     Returns
     -------
-    conformations : list
-        The list of conformations.
-    energies : list
-        The list of energies.
-    mol : rdkit.Chem.rdchem.Mol
-        The input molecule with conformers.
-    """
-    params = Chem.rdDistGeom.ETKDGv3()
-    params.useSmallRingTorsions = True
-    params.useMacrocycleTorsions = True
-    params.pruneRmsThresh = 0.001
-    params.numThreads = 20
-    params.enforceChirality = True
-    params.maxAttempts = 10000
-    
-    Chem.SanitizeMol(mol)
-    mol = Chem.AddHs(mol, addCoords=True)
-    
-    em = Chem.rdDistGeom.EmbedMultipleConfs(mol, numConfs=num_confs, params=params)
-    ps = AllChem.MMFFGetMoleculeProperties(mol, mmffVariant='MMFF94')
-    
-    energies = []
-    for conf in mol.GetConformers():
-        ff = rdForceFieldHelpers.MMFFGetMoleculeForceField(mol, ps, confId=conf.GetId())
-        
-        if isinstance(ff, type(None)):
-            continue
-        
-        energy = ff.CalcEnergy()
-        energies.append(energy)
-  
-    mol = Chem.RemoveHs(mol)
-    if em == -1:
-        conformations = []
-        for i, c in enumerate(mol.GetConformers()):
-            xyz = c.GetPositions()
-            conformations.append(xyz)
-            if i > 9:
-                return conformations
-    
-    energies = np.array(energies)
-    index = energies.argsort()[:num_confs]
-    energies = energies[index]
-    conformations = []
-    for i, c in enumerate(mol.GetConformers()):
-        if i not in index:
-            continue
-        
-        xyz = c.GetPositions()
-        conformations.append(xyz)
-        
-    return conformations, energies, mol
-
-
-def get_geometries(mol):
-    r"""
-    Get the geometries of a molecule which is the lowest energy conformer.
-    
-    Parameters
-    ----------
-    mol : rdkit.Chem.rdchem.Mol
-        The input molecule.
-    
-    Returns
-    -------
-    min_conf : np.ndarray 
-        The geometry of the lowest energy conformer.
+    np.array
+        The geometry representation of the molecule.
+    np.array
+        The atomic numbers of the atoms in the molecule.
     """
     try:
-        conformations, energies, mol = generate_conformers(mol, num_confs=10)
+        Chem.SanitizeMol(mol)
+        mol = Chem.AddHs(mol)
 
-        # Find the lowest energy conformer
-        min_energy = energies[0]
-        min_conf = conformations[0]
+        params = Chem.rdDistGeom.ETKDGv3()
+        params.numThreads = 12
+        params.enforceChirality = True
+        params.useSmallRingTorsions = True
+        params.useMacrocycleTorsions = True
+        params.pruneRmsThresh = 0.001
+        params.maxAttempts = 10000
+        AllChem.EmbedMolecule(mol, params)
 
-        for i, energy in enumerate(energies):
-            if energy < min_energy:
-                min_energy = energy
-                min_conf = conformations[i]
-        return np.array(min_conf)
+        mol = Chem.RemoveHs(mol)
+        pos = mol.GetConformer().GetPositions()
+        z = [atom.GetAtomicNum() for atom in mol.GetAtoms()]
+
+        return pos, z
+    
     except:
-        return None
+        return None, None
+
+

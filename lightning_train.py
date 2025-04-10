@@ -54,7 +54,7 @@ def get_args():
         default=0,
         help="How many steps to warm-up over. Defaults to 0 for no warm-up",
     )
-    parser.add_argument("--lr", default=2e-4, type=float, help="learning rate")
+    parser.add_argument("--lr", default=1e-3, type=float, help="learning rate")
     parser.add_argument(
         "--lr-patience",
         type=int,

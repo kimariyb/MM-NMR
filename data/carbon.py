@@ -6,15 +6,15 @@ from tqdm import tqdm
 from rdkit import Chem
 from torch_geometric.data import Data, InMemoryDataset
 
-from data.features import mol2graph, get_geometries
+from data.features import mol2graph, mol2geometry
 
 
 class CarbonDataset(InMemoryDataset):
     def __init__(self, root, transform=None, pre_transform=None, pre_filter=None):
         self.root = root
-        super(CarbonDataset, self).__init__(root, transform, pre_transform, pre_filter)       
-        self.data, self.slices = torch.load(self.processed_paths[0])
-            
+        super(CarbonDataset, self).__init__(root, transform, pre_transform, pre_filter)
+        self.data, self.slices = torch.load(self.processed_paths[0]) 
+ 
     @property
     def raw_dir(self):
         return os.path.join(self.root, "raw")
@@ -34,16 +34,29 @@ class CarbonDataset(InMemoryDataset):
     def process(self):
         data_list = []
         suppl = Chem.SDMolSupplier(os.path.join(self.raw_dir, self.raw_file_names))
-                
+
+        count = 0        
         for mol in tqdm(suppl, desc="Processing carbon dataset", unit="mol", ncols=100, total=len(suppl)):            
             if mol is None:
                 continue
-            
+
+            # create graph
+            graph = mol2graph(mol)
+            if graph is None:
+                continue 
+
+            data = Data()
+            data.smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True) 
+            data.inchi = mol.GetProp('INChI key')
+            data.x = torch.tensor(graph['node_feat'], dtype=torch.float)
+            data.edge_index = torch.tensor(graph['edge_index'], dtype=torch.long)
+            data.edge_attr = torch.tensor(graph['edge_feat'], dtype=torch.float)   
+
             # extract spectrum
             spectrum = self.extract_spectrum(mol)
-            # sort the spectrum by atom index
-            spectrum = {k: v for k, v in sorted(spectrum.items())}
-            
+            if spectrum is None:
+                continue
+
             # get the carbon atoms
             for i, atom in enumerate(mol.GetAtoms()):
                 if i in spectrum:
@@ -52,46 +65,26 @@ class CarbonDataset(InMemoryDataset):
                 else:
                     atom.SetProp('shift', str(0))
                     atom.SetBoolProp('mask', False)
-                
-            # create graph
-            graph = mol2graph(mol)
-            if graph is None:
-                continue 
-            
-            data = Data()
-            data.smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
-            
-            data.x = torch.tensor(graph['node_feat'], dtype=torch.float)
-            data.edge_index = torch.tensor(graph['edge_index'], dtype=torch.long)
-            data.edge_attr = torch.tensor(graph['edge_feat'], dtype=torch.float)
-            
+
             # create the shift tensor and mask tensor
             shift_tensor = torch.zeros(mol.GetNumAtoms(), 1)
             mask_tensor = torch.zeros(mol.GetNumAtoms(), 1)
-            
+                
             # get shift and mask tensors
             for i, atom in enumerate(mol.GetAtoms()):
                 shift_tensor[i] = float(atom.GetProp('shift'))
                 mask_tensor[i] = float(atom.GetBoolProp('mask'))
-                
+
             data.y = shift_tensor.clone().detach().to(torch.float)
             data.mask = mask_tensor.clone().detach().to(torch.bool).reshape(-1)
-            
+
             # get geometries
-            coord = get_geometries(mol)
-            if coord is None:
+            pos, z = mol2geometry(mol)
+            if pos is None or z is None:
                 continue
-            
-            data.pos = torch.tensor(coord, dtype=torch.float)
-            data.z = torch.tensor([atom.GetAtomicNum() for atom in mol.GetAtoms()], dtype=torch.long)
-            
-            # apply pre-transform
-            if self.pre_transform is not None:
-                data = self.pre_transform(data)
-            
-            # apply pre-filter
-            if self.pre_filter is not None and not self.pre_filter(data):
-                continue
+     
+            data.pos = torch.tensor(pos, dtype=torch.float)
+            data.z = torch.tensor(z, dtype=torch.long)
             
             data_list.append(data)
             
@@ -137,6 +130,38 @@ class CarbonDataset(InMemoryDataset):
         
         return atom_shifts
 
-    
 
+    def filter_invalid_inchi(self, invalid_inchi_keys):
+        r"""
+        Filter invalid inchi keys from dataset.
         
+        Parameters
+        ----------
+        invalid_inchi_keys : list
+            List of invalid inchi keys.
+        
+        Returns
+        -------
+        new_dataset : CarbonDataset
+            New dataset instance with filtered data.
+        """
+        # print the hint
+        print(f"Filtering invalid inchi keys: {invalid_inchi_keys}")
+
+        # 1. load all data
+        data_list = [self.get(i) for i in range(len(self))]
+        
+        # 2. filter invalid inchi keys
+        valid_data = [
+            data for data in data_list
+            if data.inchi not in invalid_inchi_keys
+        ]
+        
+        # 3. create new dataset instance
+        new_dataset = CarbonDataset(root=self.root)
+        
+        # 4. re-compose and save data
+        new_dataset._data, new_dataset._slices = self.collate(valid_data)
+        torch.save((new_dataset._data, new_dataset._slices), new_dataset.processed_paths[0])
+        
+        return new_dataset

@@ -8,6 +8,10 @@ from tqdm import tqdm
 RDLogger.DisableLog('rdApp.*')
 
 
+# Path to the sdf file containing the spectra
+DATASET_PATH = '/workspace/MM-NMR/data/dataset/nmrshiftdb2withsignals.sd'
+
+
 def export_file(suppl: list, output_path: str):
     r"""
     Exports a list of RDKit molecules to a file.
@@ -38,7 +42,18 @@ def create_hydrogen_dataset(data_path: str):
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
         # Check if the molecule is valid
         if mol is None:
-            print(f"Invalid molecule found in {data_path}")
+            continue
+        
+        # Only consider molecules with less than 40 atoms
+        if mol.GetNumAtoms() >= 40:
+            continue
+
+        # Only consider molecules with H, C, N, O, F, Si, P, S, Cl, Br, and I atoms
+        if not all(atom.GetAtomicNum() in [1, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53] for atom in mol.GetAtoms()):
+            continue
+                
+        total_charge = sum(atom.GetFormalCharge() for atom in mol.GetAtoms())
+        if total_charge != 0:
             continue
         
         # get the properties of the molecule
@@ -75,15 +90,18 @@ def create_carbon_dataset(data_path: str):
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
         # Check if the molecule is valid
         if mol is None:
-            print(f"Invalid molecule found in {data_path}")
             continue
-        # Only consider molecules with less than 50 atoms
+
+        # Only consider molecules with less than 40 atoms
         if mol.GetNumAtoms() >= 40:
-            print(f"Invalid number of atoms found in {data_path}")
             continue
+
         # Only consider molecules with H, C, N, O, F, Si, P, S, Cl, Br, and I atoms
         if not all(atom.GetAtomicNum() in [1, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53] for atom in mol.GetAtoms()):
-            print(f"Invalid element found in {data_path}")
+            continue
+        
+        total_charge = sum(atom.GetFormalCharge() for atom in mol.GetAtoms())
+        if total_charge != 0:
             continue
         
         # get the properties of the molecule
@@ -165,5 +183,5 @@ if __name__ == "__main__":
     args.add_argument('--element', '-e', type=str, required=True, help='The element to create the dataset for. Options: "carbon", "hydrogen", "fluorine"')
     
     args = args.parse_args()
-    
-    create_dataset(data_path='d:/project/MM-NMR/data/dataset/nmrshiftdb2withsignals.sd', element=args.element)
+     
+    create_dataset(data_path=DATASET_PATH, element=args.element)

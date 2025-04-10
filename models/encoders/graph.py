@@ -16,7 +16,7 @@ class GINConv(MessagePassing):
         self.aggr = aggr
         self.mlp = nn.Sequential(
             nn.Linear(emb_dim, 2 * emb_dim),
-            nn.ReLU(),
+            nn.LeakyReLU(negative_slope=0.1),
             nn.Linear(2 * emb_dim, emb_dim)
         )
         
@@ -150,38 +150,32 @@ class GraphNet(nn.Module):
     ----------
     num_layers : int
         Number of GNN layers.
-    emb_dim : int
+    hidden_dim : int
         Dimensionality of hidden units.
-    out_channels : int
-        Number of output channels.
     JK : str
         Jumping knowledge type. 
-    drop_ratio : float
+    dropout : float
         Dropout ratio.
     gnn_type : str
         Type of GNN layer. Currently, "gin", "gcn", and "gat" are supported.
-    graph_pooling : str
-        Type of graph pooling. Currently, "sum", "mean", and "max" are supported.
     """
     def __init__(
         self, 
         num_layers, 
-        emb_dim, 
-        out_channels,
+        hidden_dim, 
         JK ="last", 
-        drop_ratio = 0., 
+        dropout = 0., 
         gnn_type = "gin",
-        graph_pooling = "mean"
     ):
         if num_layers < 2:
             raise ValueError("Number of GNN layers must be greater than 1.")
 
         super(GraphNet, self).__init__()
-        self.drop_ratio = drop_ratio
+        self.dropout = dropout
         self.num_layers = num_layers
         self.JK = JK
 
-        self.node_embedding = nn.Linear(get_atom_features_dim(), emb_dim)
+        self.node_embedding = nn.Linear(get_atom_features_dim(), hidden_dim)
 
         nn.init.xavier_uniform_(self.node_embedding.weight.data)
 
@@ -189,33 +183,18 @@ class GraphNet(nn.Module):
         self.gnns = nn.ModuleList()
         for layer in range(num_layers):
             if gnn_type == "gin":
-                self.gnns.append(GINConv(emb_dim, aggr="add"))
+                self.gnns.append(GINConv(hidden_dim, aggr="add"))
             elif gnn_type == "gcn":
-                self.gnns.append(GCNConv(emb_dim))
+                self.gnns.append(GCNConv(hidden_dim))
             elif gnn_type == "gat":
-                self.gnns.append(GATConv(emb_dim))
+                self.gnns.append(GATConv(hidden_dim))
             else:
                 raise ValueError("not implemented.")
-            
-        #  Different kind of graph pooling
-        if graph_pooling == "sum":
-            self.pool = global_add_pool
-        elif graph_pooling == "mean":
-            self.pool = global_mean_pool
-        elif graph_pooling == "max":
-            self.pool = global_max_pool
-        else:
-            raise ValueError("Invalid graph pooling type.")
-        
-        if self.JK == "concat":
-            self.pred_linear = nn.Linear((self.num_layers + 1) * emb_dim, out_channels)
-        else:
-            self.pred_linear = nn.Linear(emb_dim, out_channels)
 
         # List of batchnorms
         self.batch_norms = nn.ModuleList()
         for layer in range(num_layers):
-            self.batch_norms.append(nn.BatchNorm1d(emb_dim)) 
+            self.batch_norms.append(nn.BatchNorm1d(hidden_dim)) 
 
     def forward(self, x, edge_index, edge_attr, batch):
         x = self.node_embedding(x)
@@ -225,9 +204,9 @@ class GraphNet(nn.Module):
             h = self.gnns[layer](h_list[layer], edge_index, edge_attr)
             h = self.batch_norms[layer](h)
             if layer == self.num_layers - 1:
-                h = F.dropout(h, self.drop_ratio, training=self.training)
+                h = F.dropout(h, self.dropout, training=self.training)
             else:
-                h = F.dropout(F.relu(h), self.drop_ratio, training=self.training)
+                h = F.dropout(F.leaky_relu(h, negative_slope=0.1), self.dropout, training=self.training)
                 
             h_list.append(h)
 
@@ -244,8 +223,6 @@ class GraphNet(nn.Module):
             node_representation = torch.sum(torch.cat(h_list, dim=0), dim=0)[0]
         else:
             raise ValueError("not implemented.")
-        
-        graph_representation = self.pool(node_representation, batch)
 
-        return self.pred_linear(graph_representation), self.pred_linear(node_representation)
+        return node_representation
 

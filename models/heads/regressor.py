@@ -4,8 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from models.encoders.graph import GraphNet
-from models.encoders.geometry import SphereNet
-from models.fusion.transformer import BiCrossAttention
+from models.encoders.geometry import ComENet
+from models.fusion.cross_fusion import BiCrossAttention
 
 
 class PredictorRegressor(nn.Module):
@@ -14,10 +14,9 @@ class PredictorRegressor(nn.Module):
         
         self.predictor = nn.Sequential(
             nn.Linear(input_dim, 128), nn.PReLU(), nn.Dropout(0.2),
-            nn.Linear(128, 64), nn.PReLU(), nn.Dropout(0.2),
-            nn.Linear(64, 1),
+            nn.Linear(128, 1)
         )
-        
+
     def forward(self, x):
         return self.predictor(x)
     
@@ -26,23 +25,24 @@ class MultiModalFusionRegressor(nn.Module):
     r"""
     Multi-modal fusion regressor module. 
     """
-    def __init__(self, gnn_args, sphere_args, mean, std):
+    def __init__(self, gnn_args, geom_args, mean, std):
         super().__init__()
         self.gnn_args = gnn_args
-        self.sphere_args = sphere_args
+        self.geom_args = geom_args
 
         # GNN
-        self.gnn = GraphNet(**gnn_args)
-        self.norm_2d = nn.LayerNorm(self.gnn_args['out_channels'])
-        self.drop_2d = nn.Dropout(0.2)
-        # Spherenet
-        self.sphere = SphereNet(**sphere_args)
-        self.norm_3d = nn.LayerNorm(self.sphere_args['out_channels'])
-        self.drop_3d = nn.Dropout(0.2)
+        self.graph_net = GraphNet(**gnn_args)
+        self.geometry_net = ComENet(**geom_args)
 
         # Cross-attention
-        self.cross_attn = BiCrossAttention(self.gnn_args['out_channels'], self.sphere_args['out_channels'], 4)
-        self.fusion_dim = self.gnn_args['out_channels'] + self.sphere_args['out_channels']
+        self.fusion_dim = self.gnn_args['hidden_dim'] + self.geom_args['hidden_dim']
+        self.cross_attn = BiCrossAttention(
+            dim_2d=self.gnn_args['hidden_dim'], 
+            dim_3d=self.geom_args['hidden_dim'], 
+            num_heads=16,
+            fusion_dim= self.fusion_dim
+        )
+
         # Predict head
         self.predictor = PredictorRegressor(self.fusion_dim)
 
@@ -58,18 +58,16 @@ class MultiModalFusionRegressor(nn.Module):
 
     def forward(self, data):
         x, edge_index, edge_attr, pos, z, batch, mask = data.x, data.edge_index, data.edge_attr, data.pos, data.z, data.batch, data.mask
-        # get the node representations
-        _, node_t = self.gnn(x, edge_index, edge_attr, batch) # (batch_size, out_channels), (num_nodes, out_channels)
-        _, node_g = self.sphere(z, pos, batch) # (batch_size, out_channels), (num_nodes, out_channels)
         
-        node_t = self.norm_2d(self.drop_2d(node_t))
-        node_g = self.norm_3d(self.drop_3d(node_g))
+        # get the node representations
+        node_t = self.graph_net(x, edge_index, edge_attr, batch) # (batch_size, out_channels), (num_nodes, out_channels)
+        node_g = self.geometry_net(z, pos, batch) # (batch_size, out_channels), (num_nodes, out_channels)
 
-        # fuse the node representations
+        # # fuse the node representations
         node_fused = self.cross_attn(node_t, node_g) # (batch_size, out_channels * 2)
 
         # predict and normalize
-        pred = self.predictor(node_fused.clamp(-1e4, 1e4))
+        pred = self.predictor(node_fused)
         nmr_pred = pred[mask]
       
         return (nmr_pred * self.std) + self.mean

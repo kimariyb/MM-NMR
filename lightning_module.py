@@ -13,13 +13,13 @@ class SpectraLightningModule(LightningModule):
     def __init__(self, config) -> None:
         super(SpectraLightningModule, self).__init__()
         self.save_hyperparameters(config)
-        self.gnn_args, self.sphere_args = self.load_yml_config(
+        self.gnn_args, self.geom_args = self.load_yml_config(
             gnn_config_path=self.hparams.gnn_args,
-            sphere_config_path=self.hparams.geom_args,
+            geom_config_path=self.hparams.geom_args,
         )   
         self.model = MultiModalFusionRegressor(
             gnn_args=self.gnn_args, 
-            sphere_args=self.sphere_args, 
+            geom_args=self.geom_args, 
             mean=self.hparams.mean,
             std=self.hparams.std,
         )
@@ -52,11 +52,11 @@ class SpectraLightningModule(LightningModule):
     def forward(self, batch):
         return self.model(batch)
     
-    def step(self, batch, loss_fn, stage):
+    def step(self, batch, loss_fn, stage, batch_idx):
         with torch.set_grad_enabled(stage == "train"):
             pred = self(batch)
             label = batch.y[batch.mask]
-            
+
             # unsqueeze the label and pred
             pred = pred.unsqueeze(-1)
             label = label.unsqueeze(-1)
@@ -67,13 +67,13 @@ class SpectraLightningModule(LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
-        return self.step(batch, l1_loss, "train")
+        return self.step(batch, l1_loss, "train", batch_idx)
 
     def validation_step(self, batch, batch_idx):
-        return self.step(batch, l1_loss, "val")
+        return self.step(batch, l1_loss, "val", batch_idx)
 
     def test_step(self, batch, batch_idx):
-        return self.step(batch, l1_loss, "test")
+        return self.step(batch, l1_loss, "test", batch_idx)
 
     def optimizer_step(self, *args, **kwargs):
         optimizer = kwargs["optimizer"] if "optimizer" in kwargs else args[2]
@@ -121,7 +121,7 @@ class SpectraLightningModule(LightningModule):
             "test": [],
         }
 
-    def load_yml_config(self, gnn_config_path, sphere_config_path):
+    def load_yml_config(self, gnn_config_path, geom_config_path):
         r"""
         load config from yml files
         """
@@ -131,11 +131,11 @@ class SpectraLightningModule(LightningModule):
         else:
             raise ValueError("gnn_config_path should be a yml file")
 
-        if sphere_config_path.endswith(".yml") or sphere_config_path.endswith(".yaml"):
-            with open(sphere_config_path, "r") as f:
-                sphere_config = yaml.load(f, Loader=yaml.FullLoader)
+        if geom_config_path.endswith(".yml") or geom_config_path.endswith(".yaml"):
+            with open(geom_config_path, "r") as f:
+                geom_config = yaml.load(f, Loader=yaml.FullLoader)
         else:
-            raise ValueError("sphere_config_path should be a yml file")
+            raise ValueError("geom_config_path should be a yml file")
 
-        return gnn_config, sphere_config
+        return gnn_config, geom_config
 
