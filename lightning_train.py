@@ -48,8 +48,15 @@ def get_args():
     parser.add_argument(
         "--fusion-dim",
         type=int,
-        default=512,
+        default=256,
         help="Dimension of the fusion layer",
+    )
+
+    parser.add_argument(
+        "--num-heads",
+        type=int,
+        default=16,
+        help="Number of heads in the cross-attention layer",
     )
 
     # training settings
@@ -222,6 +229,7 @@ def auto_exp(args):
         f"bs_{args.batch_size}"
         + f"_lr_{args.lr}"
         + f"_fusion_{args.fusion_dim}"
+        + f"_heads_{args.num_heads}"
         + f"_seed_{args.seed}"
     )
 

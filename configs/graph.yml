@@ -1,5 +1,5 @@
-num_layers: 6
-hidden_dim: 256
+num_layers: 2
+hidden_dim: 128
 JK: 'sum'
 dropout: 0.2
 gnn_type: 'gin'

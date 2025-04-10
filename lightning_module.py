@@ -21,6 +21,7 @@ class SpectraLightningModule(LightningModule):
             gnn_args=self.gnn_args, 
             geom_args=self.geom_args, 
             fusion_dim=self.hparams.fusion_dim,
+            num_heads=self.hparams.num_heads,
             mean=self.hparams.mean,
             std=self.hparams.std,
         )

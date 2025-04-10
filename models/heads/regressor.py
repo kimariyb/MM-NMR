@@ -13,10 +13,10 @@ class PredictorRegressor(nn.Module):
         super(PredictorRegressor, self).__init__()
         
         self.predictor = nn.Sequential(
-            nn.Linear(input_dim, input_dim // 2), nn.PReLU(), nn.Dropout(0.2),
-            nn.Linear(input_dim // 2, input_dim // 4), nn.PReLU(), nn.Dropout(0.2),
-            nn.Linear(input_dim // 4, input_dim // 8), nn.PReLU(), nn.Dropout(0.2),
-            nn.Linear(input_dim // 8, 1)
+            nn.Linear(input_dim, input_dim // 2), 
+            nn.PReLU(), 
+            nn.Dropout(0.2),
+            nn.Linear(input_dim // 2, 1)
         )
 
     def forward(self, x):
@@ -27,12 +27,13 @@ class MultiModalFusionRegressor(nn.Module):
     r"""
     Multi-modal fusion regressor module. 
     """
-    def __init__(self, gnn_args, geom_args, fusion_dim, mean, std):
+    def __init__(self, gnn_args, geom_args, fusion_dim, num_heads, mean, std):
         super().__init__()
         self.gnn_args = gnn_args
         self.geom_args = geom_args
         self.fusion_dim = fusion_dim
-
+        self.num_heads = num_heads
+        
         # GNN
         self.graph_net = GraphNet(**gnn_args)
         self.geometry_net = ComENet(**geom_args)
@@ -41,7 +42,7 @@ class MultiModalFusionRegressor(nn.Module):
         self.cross_attn = BiCrossAttention(
             dim_2d=self.gnn_args['hidden_dim'], 
             dim_3d=self.geom_args['hidden_dim'], 
-            num_heads=8,
+            num_heads=self.num_heads,
             fusion_dim= self.fusion_dim
         )
 
