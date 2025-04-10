@@ -209,7 +209,7 @@ def mol2geometry(mol):
         params.pruneRmsThresh = 0.001
         params.maxAttempts = 10000
         AllChem.EmbedMolecule(mol, params)
-
+        
         mol = Chem.RemoveHs(mol)
         pos = mol.GetConformer().GetPositions()
         z = [atom.GetAtomicNum() for atom in mol.GetAtoms()]

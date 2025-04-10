@@ -20,6 +20,7 @@ class SpectraLightningModule(LightningModule):
         self.model = MultiModalFusionRegressor(
             gnn_args=self.gnn_args, 
             geom_args=self.geom_args, 
+            fusion_dim=self.hparams.fusion_dim,
             mean=self.hparams.mean,
             std=self.hparams.std,
         )

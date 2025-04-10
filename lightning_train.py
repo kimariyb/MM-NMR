@@ -44,10 +44,19 @@ def get_args():
         default='./configs/geometry.yml',
         help="Arguments for the geometry model (in yaml format)",
     )
+    
+    parser.add_argument(
+        "--fusion-dim",
+        type=int,
+        default=512,
+        help="Dimension of the fusion layer",
+    )
+
     # training settings
     parser.add_argument(
-        "--num-epochs", default=300, type=int, help="number of epochs"
+        "--num-epochs", default=1000, type=int, help="number of epochs"
     )
+    
     parser.add_argument(
         "--lr-warmup-steps",
         type=int,
@@ -79,7 +88,7 @@ def get_args():
     parser.add_argument(
         "--early-stopping-patience",
         type=int,
-        default=30,
+        default=100,
         help="Stop training after this many epochs without improvement",
     )
 
@@ -151,7 +160,7 @@ def get_args():
     parser.add_argument(
         "--num-workers",
         type=int,
-        default=6,
+        default=8,
         help="Number of workers for data prefetch",
     )
     parser.add_argument(
@@ -212,6 +221,7 @@ def auto_exp(args):
     dir_name = (
         f"bs_{args.batch_size}"
         + f"_lr_{args.lr}"
+        + f"_fusion_{args.fusion_dim}"
         + f"_seed_{args.seed}"
     )
 
