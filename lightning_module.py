@@ -54,9 +54,9 @@ class SpectraLightningModule(LightningModule):
             pred = self(batch)
             label = batch.y[batch.mask]
 
-            # unsqueeze the label and pred
-            pred = pred.unsqueeze(-1)
-            label = label.unsqueeze(-1)
+            # make pred and label to (N)
+            pred, label = pred.squeeze(-1), label.squeeze(-1)
+
             # calculate loss
             loss = loss_fn(pred, label)
             self.losses[stage].append(loss.detach())
