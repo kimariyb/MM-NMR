@@ -9,7 +9,7 @@ from torch_scatter import scatter_min
 from torch_geometric.nn import GraphConv, GraphNorm
 from torch_geometric.nn import inits
 
-from models.encoders.utils import bessel_basis, real_sph_harm
+from models.geometry.comenet_utils import bessel_basis, real_sph_harm
 
 
 def swish(x):

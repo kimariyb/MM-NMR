@@ -1,0 +1,7 @@
+num_layers: 5
+num_heads: 10
+node_in_feats: 256
+node_hid_feats: 256
+pred_hid_feats: 256
+edge_feats: 42
+node_feats: 10

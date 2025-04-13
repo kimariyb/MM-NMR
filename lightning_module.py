@@ -6,23 +6,18 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn.functional import l1_loss
 from pytorch_lightning import LightningModule
 
-from models.regressor import MultiModalFusionRegressor
+from models import PAGTNSpectraRegressor, PAGTNConfig
 
 
 class SpectraLightningModule(LightningModule):
     def __init__(self, config) -> None:
         super(SpectraLightningModule, self).__init__()
         self.save_hyperparameters(config)
-        self.gnn_args, self.geom_args = self.load_yml_config(
-            gnn_config_path=self.hparams.gnn_args,
-            geom_config_path=self.hparams.geom_args,
-        )   
-        self.model = MultiModalFusionRegressor(
-            gnn_args=self.gnn_args, 
-            geom_args=self.geom_args, 
-            num_heads=self.hparams.num_heads,
-            mean=self.hparams.mean,
-            std=self.hparams.std,
+
+        self.model = PAGTNSpectraRegressor(
+            PAGTNConfig.from_dict(
+                self.load_yml_config("./configs/pagtn.yaml")
+            )
         )
         self._reset_losses_dict()
 
@@ -123,21 +118,15 @@ class SpectraLightningModule(LightningModule):
             "test": [],
         }
 
-    def load_yml_config(self, gnn_config_path, geom_config_path):
+    def load_yml_config(self, config_path):
         r"""
         load config from yml files
         """
-        if gnn_config_path.endswith(".yml") or gnn_config_path.endswith(".yaml"):
-            with open(gnn_config_path, "r") as f:
-                gnn_config = yaml.load(f, Loader=yaml.FullLoader)
+        if config_path.endswith(".yml") or config_path.endswith(".yaml"):
+            with open(config_path, "r") as f:
+                config = yaml.load(f, Loader=yaml.FullLoader)
         else:
-            raise ValueError("gnn_config_path should be a yml file")
+            raise ValueError("config_path should be a yml file")
 
-        if geom_config_path.endswith(".yml") or geom_config_path.endswith(".yaml"):
-            with open(geom_config_path, "r") as f:
-                geom_config = yaml.load(f, Loader=yaml.FullLoader)
-        else:
-            raise ValueError("geom_config_path should be a yml file")
-
-        return gnn_config, geom_config
+        return config
 

@@ -35,7 +35,6 @@ class CarbonDataset(InMemoryDataset):
         data_list = []
         suppl = Chem.SDMolSupplier(os.path.join(self.raw_dir, self.raw_file_names))
 
-        count = 0        
         for mol in tqdm(suppl, desc="Processing carbon dataset", unit="mol", ncols=100, total=len(suppl)):            
             if mol is None:
                 continue

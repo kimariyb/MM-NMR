@@ -22,7 +22,6 @@ def get_args():
         type=str,
         help="Restart training using a model checkpoint",
     )  # keep first
-    
     parser.add_argument(
         "--conf",
         "-c",
@@ -30,32 +29,16 @@ def get_args():
         action=LoadFromFile,
         help="Configuration yaml file",
     )  # keep second
-    
-    parser.add_argument(
-        "--gnn-args",
-        type=str,
-        default='./configs/graph.yml',
-        help="Arguments for the GNN model (in yaml format)",
-    )
-    
-    parser.add_argument(
-        "--geom-args",
-        type=str,
-        default='./configs/geometry.yml',
-        help="Arguments for the geometry model (in yaml format)",
-    )
     parser.add_argument(
         "--num-heads",
         type=int,
-        default=16,
+        default=8,
         help="Number of heads in the cross-attention layer",
     )
-
     # training settings
     parser.add_argument(
-        "--num-epochs", default=1000, type=int, help="number of epochs"
+        "--num-epochs", default=500, type=int, help="number of epochs"
     )
-    
     parser.add_argument(
         "--lr-warmup-steps",
         type=int,
@@ -103,6 +86,12 @@ def get_args():
         "--dataset-root", default='./data/dataset/', type=str, help="Data storage directory"
     )
     parser.add_argument(
+        "--standardize",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="If true, multiply prediction by dataset std and add mean",
+    )
+    parser.add_argument(
         "--mean", default=None, type=float, help="Mean of the dataset"
     )
     parser.add_argument(
@@ -127,12 +116,7 @@ def get_args():
         type=int,
         help="Batchsize for validation and tests.",
     )
-    parser.add_argument(
-        "--standardize",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="If true, multiply prediction by dataset std and add mean",
-    )
+
     parser.add_argument(
         "--splits",
         default=None,

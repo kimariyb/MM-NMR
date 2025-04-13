@@ -131,7 +131,6 @@ def get_bond_features_dim():
     return len(get_bond_features(Chem.MolFromSmiles('CC').GetBonds()[0]))
 
 
-
 def mol2graph(mol: rdchem.Mol):
     r"""
     Convert a molecule to a graph representation.
@@ -225,3 +224,8 @@ def mol2geometry(mol):
         return None, None
 
 
+if __name__ == '__main__':
+    node_feats = get_atom_features_dim()
+    edges_feats = get_bond_features_dim()
+    print("node_feats: ", node_feats)
+    print("edges_feats: ", edges_feats)
