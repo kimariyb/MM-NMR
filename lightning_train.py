@@ -18,7 +18,7 @@ def get_args():
     parser = argparse.ArgumentParser(description="Training")
     parser.add_argument(
         "--gnn-model",
-        default="PAGTN",
+        default="ComeNet",
         type=str,
         help="Name of the GNN model. Default is PAGTN"
     )

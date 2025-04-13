@@ -301,14 +301,14 @@ class ComENet(nn.Module):
         Hidden embedding size. (default: :obj:`256`)
     middle_dim: int, optional
         Middle embedding size for the two layer linear block. (default: :obj:`256`)
+    out_dim: int, optional
+        Output embedding size. (default: :obj:`128`)
     num_radial: int, optional
         Number of radial basis functions. (default: :obj:`3`)
     num_spherical: int, optional
         Number of spherical harmonics. (default: :obj:`2`)
     num_output_layers: int, optional
         Number of linear layers for the output blocks. (default: :obj:`3`)
-    dropout: float, optional
-        Dropout probability. (default: :obj:`0.0`)
     
     Inputs
     ------
@@ -330,6 +330,7 @@ class ComENet(nn.Module):
         num_layers=4,
         hidden_dim=256,
         middle_dim=64,
+        out_dim=128,
         num_radial=3,
         num_spherical=2,
         num_output_layers=3,
@@ -367,6 +368,8 @@ class ComENet(nn.Module):
         for _ in range(num_output_layers):
             self.lins.append(Linear(hidden_dim, hidden_dim))
 
+        self.lin_out = Linear(hidden_dim, out_dim)
+
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -375,6 +378,7 @@ class ComENet(nn.Module):
             interaction.reset_parameters()
         for lin in self.lins:
             lin.reset_parameters()
+        self.lin_out.reset_parameters()
 
     def forward(self, z, pos, batch):
         z = z.long()
@@ -479,11 +483,40 @@ class ComENet(nn.Module):
         # Interaction blocks.
         for interaction_block in self.interaction_blocks:
             x = interaction_block(x, feature1, feature2, edge_index, batch)
-            x = F.dropout(x, p=self.dropout, training=self.training)
 
         for lin in self.lins:
             x = self.act(lin(x))
-            x = F.dropout(x, p=self.dropout, training=self.training)
-            
+        
+        x = self.lin_out(x)
+
         return x
 
+
+class ComENetConfig:
+    def __init__(
+        self,
+        cutoff=8.0,
+        num_layers=4,
+        hidden_dim=256,
+        middle_dim=64,
+        out_dim=128,
+        pred_dim=128,
+        num_radial=3,
+        num_spherical=2,
+        num_output_layers=3,
+        dropout=0.,
+    ):
+        self.cutoff = cutoff
+        self.num_layers = num_layers
+        self.hidden_dim = hidden_dim
+        self.middle_dim = middle_dim
+        self.out_dim = out_dim
+        self.pred_dim = pred_dim
+        self.num_radial = num_radial
+        self.num_spherical = num_spherical
+        self.num_output_layers = num_output_layers
+        self.dropout = dropout
+        
+    @staticmethod
+    def from_dict(config_dict):
+        return ComENetConfig(**config_dict)

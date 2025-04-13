@@ -1,5 +1,4 @@
+from models.head.geometry_regressor import GeometricSpectraRegressor
+from models.geometry.comenet import ComENetConfig
 
-from models.head.graph_regressor import PAGTNSpectraRegressor
-from models.graph.pagtn import PAGTNConfig
-
-__all__ = ['PAGTNSpectraRegressor', 'PAGTNConfig']
+__all__ = ['GeometricSpectraRegressor', 'ComENetConfig']

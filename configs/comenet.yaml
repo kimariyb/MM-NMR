@@ -1,0 +1,10 @@
+cutoff: 6.0
+num_layers: 5
+hidden_dim: 256
+middle_dim: 64
+out_dim: 128
+pred_dim: 256
+num_radial: 3
+num_spherical: 2
+num_output_layers: 1
+dropout: 0.2
