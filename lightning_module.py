@@ -7,6 +7,7 @@ from torch.nn.functional import l1_loss
 from pytorch_lightning import LightningModule
 
 from models import GeometricSpectraRegressor, ComENetConfig
+from models import PAGTNSpectraRegressor, PAGTNConfig
 
 
 class SpectraLightningModule(LightningModule):
@@ -14,11 +15,18 @@ class SpectraLightningModule(LightningModule):
         super(SpectraLightningModule, self).__init__()
         self.save_hyperparameters(config)
 
-        self.model = GeometricSpectraRegressor(
-            ComENetConfig.from_dict(
-                self.load_yml_config("./configs/comenet.yaml")
+        # self.model = GeometricSpectraRegressor(
+        #     ComENetConfig.from_dict(
+        #         self.load_yml_config("./configs/comenet.yaml")
+        #     )
+        # )
+
+        self.model = PAGTNSpectraRegressor(
+            PAGTNConfig.from_dict(
+                self.load_yml_config("./configs/pagtn.yaml")
             )
         )
+
         self._reset_losses_dict()
 
     def configure_optimizers(self):
@@ -56,7 +64,8 @@ class SpectraLightningModule(LightningModule):
 
             # make pred and label to (N)
             pred, label = pred.squeeze(-1), label.squeeze(-1)
-
+            pred = pred * self.hparams.std + self.hparams.mean
+            
             # calculate loss
             loss = loss_fn(pred, label)
             self.losses[stage].append(loss.detach())
