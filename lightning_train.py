@@ -17,6 +17,12 @@ from lightning_utils import LoadFromFile, number, save_argparse
 def get_args():
     parser = argparse.ArgumentParser(description="Training")
     parser.add_argument(
+        "--gnn-model",
+        default="PAGTN",
+        type=str,
+        help="Name of the GNN model. Default is PAGTN"
+    )
+    parser.add_argument(
         "--load-model",
         default=None,
         type=str,
@@ -29,12 +35,6 @@ def get_args():
         action=LoadFromFile,
         help="Configuration yaml file",
     )  # keep second
-    parser.add_argument(
-        "--num-heads",
-        type=int,
-        default=8,
-        help="Number of heads in the cross-attention layer",
-    )
     # training settings
     parser.add_argument(
         "--num-epochs", default=500, type=int, help="number of epochs"
@@ -203,8 +203,8 @@ def get_args():
 def auto_exp(args):
     dir_name = (
         f"bs_{args.batch_size}"
+        + f"_m_{args.gnn_model}"
         + f"_lr_{args.lr}"
-        + f"_heads_{args.num_heads}"
         + f"_seed_{args.seed}"
     )
 
