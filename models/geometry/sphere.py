@@ -15,7 +15,7 @@ def swish(x):
     return x * torch.sigmoid(x)
 
 
-class Envelope(torch.nn.Module):
+class Envelope(nn.Module):
     def __init__(self, exponent):
         super(Envelope, self).__init__()
         self.p = exponent + 1
@@ -31,13 +31,13 @@ class Envelope(torch.nn.Module):
         return 1. / x + a * x_pow_p0 + b * x_pow_p1 + c * x_pow_p2
 
 
-class dist_emb(torch.nn.Module):
+class dist_emb(nn.Module):
     def __init__(self, num_radial, cutoff=5.0, envelope_exponent=5):
         super(dist_emb, self).__init__()
         self.cutoff = cutoff
         self.envelope = Envelope(envelope_exponent)
 
-        self.freq = torch.nn.Parameter(torch.Tensor(num_radial))
+        self.freq = nn.Parameter(torch.Tensor(num_radial))
 
         self.reset_parameters()
 
@@ -49,7 +49,7 @@ class dist_emb(torch.nn.Module):
         return self.envelope(dist) * (self.freq * dist).sin()
 
 
-class angle_emb(torch.nn.Module):
+class angle_emb(nn.Module):
     def __init__(self, num_spherical, num_radial, cutoff=5.0,
                  envelope_exponent=5):
         super(angle_emb, self).__init__()
@@ -89,7 +89,7 @@ class angle_emb(torch.nn.Module):
         return out
 
 
-class torsion_emb(torch.nn.Module):
+class torsion_emb(nn.Module):
     def __init__(self, num_spherical, num_radial, cutoff=5.0,
                  envelope_exponent=5):
         super(torsion_emb, self).__init__()
@@ -130,7 +130,7 @@ class torsion_emb(torch.nn.Module):
         return out
     
 
-class emb(torch.nn.Module):
+class emb(nn.Module):
     def __init__(self, num_spherical, num_radial, cutoff, envelope_exponent):
         super(emb, self).__init__()
         self.dist_emb = dist_emb(num_radial, cutoff, envelope_exponent)
@@ -147,10 +147,11 @@ class emb(torch.nn.Module):
         torsion_emb = self.torsion_emb(dist, angle, torsion, idx_kj)
         return dist_emb, angle_emb, torsion_emb
 
-class ResidualLayer(torch.nn.Module):
-    def __init__(self, hidden_channels, act=swish):
+
+class ResidualLayer(nn.Module):
+    def __init__(self, hidden_channels):
         super(ResidualLayer, self).__init__()
-        self.act = act
+        self.act = swish
         self.lin1 = nn.Linear(hidden_channels, hidden_channels)
         self.lin2 = nn.Linear(hidden_channels, hidden_channels)
 
@@ -166,10 +167,10 @@ class ResidualLayer(torch.nn.Module):
         return x + self.act(self.lin2(self.act(self.lin1(x))))
 
 
-class init(torch.nn.Module):
-    def __init__(self, num_radial, hidden_channels, act=swish, use_node_features=True):
+class init(nn.Module):
+    def __init__(self, num_radial, hidden_channels, use_node_features=True):
         super(init, self).__init__()
-        self.act = act
+        self.act = swish
         self.use_node_features = use_node_features
         if self.use_node_features:
             self.emb = nn.Embedding(55, hidden_channels)
@@ -201,11 +202,11 @@ class init(torch.nn.Module):
         return e1, e2
 
 
-class update_e(torch.nn.Module):
+class update_e(nn.Module):
     def __init__(self, hidden_channels, int_emb_size, basis_emb_size_dist, basis_emb_size_angle, basis_emb_size_torsion, num_spherical, num_radial,
-        num_before_skip, num_after_skip, act=swish):
+        num_before_skip, num_after_skip):
         super(update_e, self).__init__()
-        self.act = act
+        self.act = swish
         self.lin_rbf1 = nn.Linear(num_radial, basis_emb_size_dist, bias=False)
         self.lin_rbf2 = nn.Linear(basis_emb_size_dist, hidden_channels, bias=False)
         self.lin_sbf1 = nn.Linear(num_spherical * num_radial, basis_emb_size_angle, bias=False)
@@ -220,13 +221,13 @@ class update_e(torch.nn.Module):
         self.lin_down = nn.Linear(hidden_channels, int_emb_size, bias=False)
         self.lin_up = nn.Linear(int_emb_size, hidden_channels, bias=False)
 
-        self.layers_before_skip = torch.nn.ModuleList([
-            ResidualLayer(hidden_channels, act)
+        self.layers_before_skip = nn.ModuleList([
+            ResidualLayer(hidden_channels)
             for _ in range(num_before_skip)
         ])
         self.lin = nn.Linear(hidden_channels, hidden_channels)
-        self.layers_after_skip = torch.nn.ModuleList([
-            ResidualLayer(hidden_channels, act)
+        self.layers_after_skip = nn.ModuleList([
+            ResidualLayer(hidden_channels)
             for _ in range(num_after_skip)
         ])
 
@@ -293,9 +294,9 @@ class update_e(torch.nn.Module):
 
 
 class update_v(torch.nn.Module):
-    def __init__(self, hidden_channels, out_emb_channels, out_channels, num_output_layers, act, output_init):
+    def __init__(self, hidden_channels, out_emb_channels, out_channels, num_output_layers, output_init):
         super(update_v, self).__init__()
-        self.act = act
+        self.act = swish
         self.output_init = output_init
 
         self.lin_up = nn.Linear(hidden_channels, out_emb_channels, bias=True)
@@ -326,7 +327,7 @@ class update_v(torch.nn.Module):
         return v
 
 
-class update_u(torch.nn.Module):
+class update_u(nn.Module):
     def __init__(self):
         super(update_u, self).__init__()
 
@@ -335,30 +336,50 @@ class update_u(torch.nn.Module):
         return u
 
 
-class SphereNet(torch.nn.Module):
+class SphereNet(nn.Module):
     r"""
-         The spherical message passing neural network SphereNet from the `"Spherical Message Passing for 3D Molecular Graphs" <https://openreview.net/forum?id=givsRXsOt9r>`_ paper.
-        
-        Args:
-            energy_and_force (bool, optional): If set to :obj:`True`, will predict energy and take the negative of the derivative of the energy with respect to the atomic positions as predicted forces. (default: :obj:`False`)
-            cutoff (float, optional): Cutoff distance for interatomic interactions. (default: :obj:`5.0`)
-            num_layers (int, optional): Number of building blocks. (default: :obj:`4`)
-            hidden_channels (int, optional): Hidden embedding size. (default: :obj:`128`)
-            out_channels (int, optional): Size of each output sample. (default: :obj:`1`)
-            int_emb_size (int, optional): Embedding size used for interaction triplets. (default: :obj:`64`)
-            basis_emb_size_dist (int, optional): Embedding size used in the basis transformation of distance. (default: :obj:`8`)
-            basis_emb_size_angle (int, optional): Embedding size used in the basis transformation of angle. (default: :obj:`8`)
-            basis_emb_size_torsion (int, optional): Embedding size used in the basis transformation of torsion. (default: :obj:`8`)
-            out_emb_channels (int, optional): Embedding size used for atoms in the output block. (default: :obj:`256`)
-            num_spherical (int, optional): Number of spherical harmonics. (default: :obj:`7`)
-            num_radial (int, optional): Number of radial basis functions. (default: :obj:`6`)
-            envelop_exponent (int, optional): Shape of the smooth cutoff. (default: :obj:`5`)
-            num_before_skip (int, optional): Number of residual layers in the interaction blocks before the skip connection. (default: :obj:`1`)
-            num_after_skip (int, optional): Number of residual layers in the interaction blocks before the skip connection. (default: :obj:`2`)
-            num_output_layers (int, optional): Number of linear layers for the output blocks. (default: :obj:`3`)
-            act: (function, optional): The activation funtion. (default: :obj:`swish`)
-            output_init: (str, optional): The initialization fot the output. It could be :obj:`GlorotOrthogonal` and :obj:`zeros`. (default: :obj:`GlorotOrthogonal`)
-            
+    The spherical message passing neural network SphereNet from the 
+    `"Spherical Message Passing for 3D Molecular Graphs"
+    <https://openreview.net/forum?id=givsRXsOt9r>`_ paper.
+    
+    Parameters
+    ----------
+    energy_and_force: bool, optional
+        If set to :obj:`True`, will predict energy and take the negative of the derivative of the energy with respect to the atomic positions as predicted forces. (default: :obj:`False`)
+    cutoff: float, optional
+        Cutoff distance for interatomic interactions. (default: :obj:`5.0`)
+    num_layers: int, optional
+        Number of building blocks. (default: :obj:`4`)
+    hidden_channels: int, optional
+        Hidden embedding size. (default: :obj:`128`)
+    out_channels: int, optional
+        Size of each output sample. (default: :obj:`1`)
+    int_emb_size: int, optional
+        Embedding size used for interaction triplets. (default: :obj:`64`)
+    basis_emb_size_dist: int, optional
+        Embedding size used in the basis transformation of distance. (default: :obj:`8`)
+    basis_emb_size_angle: int, optional
+        Embedding size used in the basis transformation of angle. (default: :obj:`8`)
+    basis_emb_size_torsion: int, optional
+        Embedding size used in the basis transformation of torsion. (default: :obj:`8`)
+    out_emb_channels: int, optional
+        Embedding size used for atoms in the output block. (default: :obj:`256`)
+    num_spherical: int, optional
+        Number of spherical harmonics. (default: :obj:`7`)
+    num_radial: int, optional
+        Number of radial basis functions. (default: :obj:`6`)
+    envelop_exponent: int, optional
+        Shape of the smooth cutoff. (default: :obj:`5`)
+    num_before_skip: int, optional
+        Number of residual layers in the interaction blocks before the skip connection. (default: :obj:`1`)
+    num_after_skip: int, optional
+        Number of residual layers in the interaction blocks before the skip connection. (default: :obj:`2`)
+    num_output_layers: int, optional
+        Number of linear layers for the output blocks. (default: :obj:`3`)
+    output_init: (str, optional)
+        The initialization fot the output. It could be :obj:`GlorotOrthogonal` and :obj:`zeros`. (default: :obj:`GlorotOrthogonal`)
+    use_node_features: bool, optional
+        If set to :obj:`True`, will use node features to initialize the node embeddings. (default: :obj:`True`)
     """
     def __init__(
         self, energy_and_force=False, cutoff=5.0, num_layers=4,
@@ -366,24 +387,28 @@ class SphereNet(torch.nn.Module):
         basis_emb_size_dist=8, basis_emb_size_angle=8, basis_emb_size_torsion=8, out_emb_channels=256,
         num_spherical=7, num_radial=6, envelope_exponent=5,
         num_before_skip=1, num_after_skip=2, num_output_layers=3,
-        act=swish, output_init='GlorotOrthogonal', use_node_features=True):
+        output_init='GlorotOrthogonal', use_node_features=True):
         super(SphereNet, self).__init__()
 
         self.cutoff = cutoff
         self.energy_and_force = energy_and_force
 
-        self.init_e = init(num_radial, hidden_channels, act, use_node_features=use_node_features)
-        self.init_v = update_v(hidden_channels, out_emb_channels, out_channels, num_output_layers, act, output_init)
+        self.init_e = init(num_radial, hidden_channels, use_node_features)
+        self.init_v = update_v(hidden_channels, out_emb_channels, out_channels, num_output_layers, output_init)
         self.init_u = update_u()
         self.emb = emb(num_spherical, num_radial, self.cutoff, envelope_exponent)
 
-        self.update_vs = torch.nn.ModuleList([
-            update_v(hidden_channels, out_emb_channels, out_channels, num_output_layers, act, output_init) for _ in range(num_layers)])
+        self.update_vs = nn.ModuleList([
+            update_v(hidden_channels, out_emb_channels, out_channels, num_output_layers, output_init) 
+            for _ in range(num_layers)])
 
-        self.update_es = torch.nn.ModuleList([
-            update_e(hidden_channels, int_emb_size, basis_emb_size_dist, basis_emb_size_angle, basis_emb_size_torsion, num_spherical, num_radial, num_before_skip, num_after_skip,act) for _ in range(num_layers)])
+        self.update_es = nn.ModuleList([
+            update_e(hidden_channels, int_emb_size, basis_emb_size_dist, 
+                     basis_emb_size_angle, basis_emb_size_torsion,
+                     num_spherical, num_radial, num_before_skip, num_after_skip)
+            for _ in range(num_layers)])
 
-        self.update_us = torch.nn.ModuleList([update_u() for _ in range(num_layers)])
+        self.update_us = nn.ModuleList([update_u() for _ in range(num_layers)])
 
         self.reset_parameters()
 
@@ -421,5 +446,50 @@ class SphereNet(torch.nn.Module):
 
 
 class SphereNetConfig:
-    def __init__(self):
-        pass
+    def __init__(
+        self,
+        energy_and_force=False,
+        cutoff=5.0,
+        num_layers=4,
+        hidden_channels=128,
+        out_channels=1,
+        int_emb_size=64,
+        basis_emb_size_dist=8,
+        basis_emb_size_angle=8,
+        basis_emb_size_torsion=8,
+        out_emb_channels=256,
+        num_spherical=7,
+        num_radial=6,
+        envelope_exponent=5,
+        num_before_skip=1,
+        num_after_skip=2,
+        num_output_layers=3,
+        output_init='GlorotOrthogonal',
+        use_node_features=True
+    ):
+        self.energy_and_force = energy_and_force
+        self.cutoff = cutoff
+        self.num_layers = num_layers
+        self.hidden_channels = hidden_channels
+        self.out_channels = out_channels
+        self.int_emb_size = int_emb_size
+        self.basis_emb_size_dist = basis_emb_size_dist
+        self.basis_emb_size_angle = basis_emb_size_angle
+        self.basis_emb_size_torsion = basis_emb_size_torsion
+        self.out_emb_channels = out_emb_channels
+        self.num_spherical = num_spherical
+        self.num_radial = num_radial
+        self.envelope_exponent = envelope_exponent
+        self.num_before_skip = num_before_skip
+        self.num_after_skip = num_after_skip
+        self.num_output_layers = num_output_layers
+        self.output_init = output_init
+        self.use_node_features = use_node_features
+    
+    
+    @staticmethod
+    def from_dict(config_dict):
+        return SphereNetConfig(**config_dict)
+    
+    
+    

@@ -6,8 +6,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn.functional import l1_loss
 from pytorch_lightning import LightningModule
 
-from models import GeometricSpectraRegressor, ComENetConfig
-from models import PAGTNSpectraRegressor, PAGTNConfig
+from models import ComENetSpectraRegressor, ComENetConfig
 
 
 class SpectraLightningModule(LightningModule):
@@ -15,15 +14,9 @@ class SpectraLightningModule(LightningModule):
         super(SpectraLightningModule, self).__init__()
         self.save_hyperparameters(config)
 
-        # self.model = GeometricSpectraRegressor(
-        #     ComENetConfig.from_dict(
-        #         self.load_yml_config("./configs/comenet.yaml")
-        #     )
-        # )
-
-        self.model = PAGTNSpectraRegressor(
-            PAGTNConfig.from_dict(
-                self.load_yml_config("./configs/pagtn.yaml")
+        self.model = ComENetSpectraRegressor(
+            ComENetConfig.from_dict(
+                self.load_yml_config("./configs/comenet.yaml")
             )
         )
 

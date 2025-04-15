@@ -1,46 +1,33 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-from torch_geometric.nn import Set2Set
-
-from models.graph.pagtn import PAGTNGNN
+from models.graph.gin import GIN
 
 
-class PAGTNSpectraRegressor(nn.Module):
+class GINSpectraRegressor(nn.Module):
     def __init__(self, config):
-        super(PAGTNSpectraRegressor, self).__init__()
+        super(GINSpectraRegressor, self).__init__()
 
-        self.gnn = PAGTNGNN(
-            node_feats=config.node_feats,
-            node_hid_feats=config.node_hid_feats,
-            edge_feats=config.edge_feats,
+        self.gnn = GIN(
             num_layers=config.num_layers,
-            num_heads=config.num_heads,
-        )
-
-        self.readout_g = Set2Set(
-            in_channels=config.node_feats + config.node_hid_feats,
-            processing_steps=3, num_layers=1
+            node_dim=config.node_dim,
+            edge_dim=config.edge_dim,
+            hidden_dim=config.hidden_dim,
+            drop_ratio=config.drop_ratio
         )
         
         self.readout_n = nn.Sequential(
-            nn.Linear((config.node_feats + config.node_hid_feats) * 3, config.pred_hid_feats), nn.PReLU(), nn.Dropout(0.2),
-            nn.Linear(config.pred_hid_feats, config.pred_hid_feats), nn.PReLU(), nn.Dropout(0.2),
-            nn.Linear(config.pred_hid_feats, config.pred_hid_feats), nn.PReLU(), nn.Dropout(0.2),
-            nn.Linear(config.pred_hid_feats, 1)
+            nn.Linear(config.hidden_dim, config.hidden_dim*3), nn.PReLU(), nn.Dropout(0.5),
+            nn.Linear(config.hidden_dim*3, 1),
         )
         
     def forward(self, data):
-        x, edge_attr, edge_index, batch, mask = data.x, data.edge_attr, data.edge_index, data.batch, data.mask
+        x, edge_attr, edge_index, mask = data.x, data.edge_attr, data.edge_index, data.mask
 
-        node_feats_embedding = self.gnn(x, edge_attr, edge_index)
-        node_embed_feats = torch.cat([x, node_feats_embedding], dim=1)
+        node_embed_feats = self.gnn(x, edge_index, edge_attr) # (N, out_dim)
 
-        _, counts = torch.unique(batch, return_counts=True)        
-        graph_embed_feats = self.readout_g(node_embed_feats, batch)
-        graph_embed_feats = torch.repeat_interleave(graph_embed_feats, counts, dim=0)
-
-        out = self.readout_n(torch.hstack([node_embed_feats, graph_embed_feats])[mask])
+        out = self.readout_n(node_embed_feats[mask])[:, 0]
         
-        return out[:, 0]
+        return out
     

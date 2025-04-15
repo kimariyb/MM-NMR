@@ -334,12 +334,10 @@ class ComENet(nn.Module):
         num_radial=3,
         num_spherical=2,
         num_output_layers=3,
-        dropout=0.,
     ):
         super(ComENet, self).__init__()
         self.cutoff = cutoff
         self.num_layers = num_layers
-        self.dropout = dropout
 
         if sym is None:
             raise ImportError("Package `sympy` could not be found.")
@@ -500,22 +498,18 @@ class ComENetConfig:
         hidden_dim=256,
         middle_dim=64,
         out_dim=128,
-        pred_dim=128,
         num_radial=3,
         num_spherical=2,
         num_output_layers=3,
-        dropout=0.,
     ):
         self.cutoff = cutoff
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
         self.middle_dim = middle_dim
         self.out_dim = out_dim
-        self.pred_dim = pred_dim
         self.num_radial = num_radial
         self.num_spherical = num_spherical
         self.num_output_layers = num_output_layers
-        self.dropout = dropout
         
     @staticmethod
     def from_dict(config_dict):

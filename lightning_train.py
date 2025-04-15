@@ -108,7 +108,7 @@ def get_args():
         help="Reload dataloaders every n epoch",
     )
     parser.add_argument(
-        "--batch-size", default=256, type=int, help="batch size"
+        "--batch-size", default=128, type=int, help="batch size"
     )
     parser.add_argument(
         "--inference-batch-size",

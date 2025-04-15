@@ -1,0 +1,5 @@
+node_dim: 42
+edge_dim: 10
+hidden_dim: 128
+num_layers: 7
+drop_ratio: 0.2
