@@ -18,7 +18,7 @@ def get_args():
     parser = argparse.ArgumentParser(description="Training")
     parser.add_argument(
         "--gnn-model",
-        default="ComeNet",
+        default="fusion",
         type=str,
         help="Name of the GNN model. Default is PAGTN"
     )
@@ -108,7 +108,7 @@ def get_args():
         help="Reload dataloaders every n epoch",
     )
     parser.add_argument(
-        "--batch-size", default=128, type=int, help="batch size"
+        "--batch-size", default=256, type=int, help="batch size"
     )
     parser.add_argument(
         "--inference-batch-size",

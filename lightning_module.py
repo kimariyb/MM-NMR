@@ -6,19 +6,12 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn.functional import l1_loss
 from pytorch_lightning import LightningModule
 
-from models import ComENetSpectraRegressor, ComENetConfig
-
 
 class SpectraLightningModule(LightningModule):
     def __init__(self, config) -> None:
         super(SpectraLightningModule, self).__init__()
         self.save_hyperparameters(config)
-
-        self.model = ComENetSpectraRegressor(
-            ComENetConfig.from_dict(
-                self.load_yml_config("./configs/comenet.yaml")
-            )
-        )
+        self.model = ...
 
         self._reset_losses_dict()
 
@@ -57,7 +50,7 @@ class SpectraLightningModule(LightningModule):
 
             # make pred and label to (N)
             pred, label = pred.squeeze(-1), label.squeeze(-1)
-            pred = pred * self.hparams.std + self.hparams.mean
+            pred = (pred * self.hparams.std) + self.hparams.mean
             
             # calculate loss
             loss = loss_fn(pred, label)
