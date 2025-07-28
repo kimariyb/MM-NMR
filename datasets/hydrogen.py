@@ -6,7 +6,7 @@ from tqdm import tqdm
 from rdkit import Chem
 from torch_geometric.data import Data, InMemoryDataset
 
-from data.features import mol2graph, mol2geometry
+from datasets.compound import mol2graph, mol2geometry
 
 
 class HydrogenDataset(InMemoryDataset):

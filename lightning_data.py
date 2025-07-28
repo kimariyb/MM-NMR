@@ -7,8 +7,8 @@ from torch_geometric.loader import DataLoader
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities import rank_zero_only
 
-from data.carbon import CarbonDataset
-from data.hydrogen import HydrogenDataset
+from datasets.carbon import CarbonDataset
+from datasets.hydrogen import HydrogenDataset
 from lightning_utils import make_splits
 
 

@@ -1,1 +1,1 @@
-# Multi-Modal Representation for NMR Prediction
+# Multiscale Conformational Learning for NMR Shift Prediction
