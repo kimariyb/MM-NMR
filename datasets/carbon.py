@@ -5,13 +5,14 @@ import numpy as np
 from tqdm import tqdm
 from rdkit import Chem
 from torch_geometric.data import Data, InMemoryDataset
-
-from datasets.compound import mol2graph, mol2geometry
+from loaders.utils import mol2data
+from collections import defaultdict
 
 
 class CarbonDataset(InMemoryDataset):
-    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None):
+    def __init__(self, root, max_num_conformers=None, transform=None, pre_transform=None, pre_filter=None):
         self.root = root
+        self.max_num_conformers = max_num_conformers
         super(CarbonDataset, self).__init__(root, transform, pre_transform, pre_filter)
         self.data, self.slices = torch.load(self.processed_paths[0]) 
  
@@ -29,11 +30,37 @@ class CarbonDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return 'processed_data.pt'
+        return (
+            'processed_data.pt'
+            if self.max_num_conformers is None
+            else f'processed_data_{self.max_num_conformers}.pt'
+        )
     
     def process(self):
         data_list = []
-        suppl = Chem.SDMolSupplier(os.path.join(self.raw_dir, self.raw_file_names))
+        suppl = Chem.SDMolSupplier(
+            os.path.join(self.raw_dir, self.raw_file_names), removeHs=False
+        )
+
+        mols = defaultdict(list)
+        raw_sdf_file = os.path.join(self.raw_dir, self.raw_file_names)
+
+        with tqdm(
+            Chem.SDMolSupplier(raw_sdf_file, removeHs=False),
+            desc="Processing carbon dataset",
+        ) as suppl:
+            for idx, mol in enumerate(suppl):
+                if mol is None:
+                    continue
+
+                # get the id for the molecule
+                mol_id = mol.GetProp("nmrshiftdb2 ID")
+                mol_name = mol.GetProp("_Name")
+                mol_smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
+
+                data = mol2data(mol)
+
+
 
         for mol in tqdm(suppl, desc="Processing carbon dataset", unit="mol", ncols=100, total=len(suppl)):            
             if mol is None:
@@ -129,38 +156,3 @@ class CarbonDataset(InMemoryDataset):
         
         return atom_shifts
 
-
-    def filter_invalid_inchi(self, invalid_inchi_keys):
-        r"""
-        Filter invalid inchi keys from dataset.
-        
-        Parameters
-        ----------
-        invalid_inchi_keys : list
-            List of invalid inchi keys.
-        
-        Returns
-        -------
-        new_dataset : CarbonDataset
-            New dataset instance with filtered data.
-        """
-        # print the hint
-        print(f"Filtering invalid inchi keys: {invalid_inchi_keys}")
-
-        # 1. load all data
-        data_list = [self.get(i) for i in range(len(self))]
-        
-        # 2. filter invalid inchi keys
-        valid_data = [
-            data for data in data_list
-            if data.inchi not in invalid_inchi_keys
-        ]
-        
-        # 3. create new dataset instance
-        new_dataset = CarbonDataset(root=self.root)
-        
-        # 4. re-compose and save data
-        new_dataset._data, new_dataset._slices = self.collate(valid_data)
-        torch.save((new_dataset._data, new_dataset._slices), new_dataset.processed_paths[0])
-        
-        return new_dataset
