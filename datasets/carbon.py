@@ -7,6 +7,7 @@ from rdkit import Chem
 from torch_geometric.data import Data, InMemoryDataset
 from loaders.utils import mol2data
 from collections import defaultdict
+from sklearn.utils import shuffle
 
 
 class CarbonDataset(InMemoryDataset):
@@ -36,6 +37,10 @@ class CarbonDataset(InMemoryDataset):
             else f'processed_data_{self.max_num_conformers}.pt'
         )
     
+    @property
+    def num_molecules(self):
+        return len(self.data)
+    
     def process(self):
         data_list = []
         suppl = Chem.SDMolSupplier(
@@ -59,24 +64,17 @@ class CarbonDataset(InMemoryDataset):
                 mol_smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
 
                 data = mol2data(mol)
+                data.name = mol_name
+                data.id = mol_id
+                data.smiles = mol_smiles
 
+                if self.pre_filter is not None and not self.pre_filter(data):
+                    continue
+                if self.pre_transform is not None:
+                    data = self.pre_transform(data)
 
+                mols[mol_name].append(data)
 
-        for mol in tqdm(suppl, desc="Processing carbon dataset", unit="mol", ncols=100, total=len(suppl)):            
-            if mol is None:
-                continue
-
-            # create graph
-            graph = mol2graph(mol)
-            if graph is None:
-                continue 
-
-            data = Data()
-            data.smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True) 
-            data.inchi = mol.GetProp('INChI key')
-            data.x = torch.tensor(graph['node_feat'], dtype=torch.float)
-            data.edge_index = torch.tensor(graph['edge_index'], dtype=torch.long)
-            data.edge_attr = torch.tensor(graph['edge_feat'], dtype=torch.float)   
 
             # extract spectrum
             spectrum = self.extract_spectrum(mol)
@@ -96,21 +94,7 @@ class CarbonDataset(InMemoryDataset):
             shift_tensor = torch.zeros(mol.GetNumAtoms(), 1)
             mask_tensor = torch.zeros(mol.GetNumAtoms(), 1)
                 
-            # get shift and mask tensors
-            for i, atom in enumerate(mol.GetAtoms()):
-                shift_tensor[i] = float(atom.GetProp('shift'))
-                mask_tensor[i] = float(atom.GetBoolProp('mask'))
 
-            data.y = shift_tensor.clone().detach().to(torch.float)
-            data.mask = mask_tensor.clone().detach().to(torch.bool).reshape(-1)
-
-            # get geometries
-            pos, z = mol2geometry(mol)
-            if pos is None or z is None:
-                continue
-     
-            data.pos = torch.tensor(pos, dtype=torch.float)
-            data.z = torch.tensor(z, dtype=torch.long)
             
             data_list.append(data)
             
@@ -156,3 +140,14 @@ class CarbonDataset(InMemoryDataset):
         
         return atom_shifts
 
+
+    def get_idx_split(self, train_ratio=0.8, valid_ratio=0.1, seed=123):
+        molecule_ids = shuffle(range(self.num_molecules), random_state=seed)
+        train_size = int(train_ratio * self.num_molecules)
+        valid_size = int(valid_ratio * self.num_molecules)
+
+        train_idx = torch.tensor(molecule_ids[:train_size])
+        valid_idx = torch.tensor(molecule_ids[train_size : train_size + valid_size])
+        test_idx = torch.tensor(molecule_ids[train_size + valid_size :])
+
+        return train_idx, valid_idx, test_idx
