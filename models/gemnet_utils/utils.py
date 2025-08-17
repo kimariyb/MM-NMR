@@ -14,18 +14,17 @@ import logging
 import os
 import sys
 import time
-import numpy as np
-import torch
-import torch.nn as nn
-import torch_geometric
-import yaml
-
 from bisect import bisect
 from functools import wraps
 from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Mapping
 
+import numpy as np
+import torch
+import torch.nn as nn
+import torch_geometric
+import yaml
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 from torch_geometric.data import Data

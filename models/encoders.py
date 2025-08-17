@@ -1,36 +1,75 @@
 import torch
-import torch.nn as nn
-
-from ogb.graphproppred.mol_encoder import AtomEncoder as OGBAtomEncoder
-from ogb.graphproppred.mol_encoder import BondEncoder as OGBBondEncoder
+from ogb.graphproppred.mol_encoder import AtomEncoder as OGB_AtomEncoder
+from ogb.graphproppred.mol_encoder import BondEncoder as OGB_BondEncoder
 from torch_geometric.nn import MLP
 
 
-class MyOGBAtomEncoder(nn.Module):
+def get_node_encoder(dataset, hidden_dim, lap_dim=0, rwse_dim=0):
+    if rwse_dim > 0 or lap_dim > 0:
+        return FeatureEncoder(hidden_dim, hidden_dim, dataset, lap_dim, rwse_dim)
+    if dataset.lower() == "zinc":
+        return ZINCAtomEncoder(hidden_dim)
+    if dataset.lower() in ["esol", "bace", "freesolv", "lipo"]:
+        return MyOGBAtomEncoder(hidden_dim)
+    if dataset.lower().startswith("kraken"):
+        return MyOGBAtomEncoder(hidden_dim)
+    if dataset.lower().startswith("drugs"):
+        return MyOGBAtomEncoder(hidden_dim)
+    else:
+        raise NotImplementedError
+
+
+def get_edge_encoder(dataset, hidden_dim):
+    if dataset.lower() == "zinc":
+        return ZINCBondEncoder(hidden_dim)
+    if dataset.lower() in ["esol", "bace", "freesolv", "lipo"]:
+        return torch.nn.LazyLinear(hidden_dim)
+    if dataset.lower().startswith("kraken"):
+        return torch.nn.LazyLinear(hidden_dim)
+    if dataset.lower().startswith("drugs"):
+        return torch.nn.LazyLinear(hidden_dim)
+    else:
+        raise NotImplementedError
+
+
+class ZINCBondEncoder(torch.nn.Module):
     def __init__(self, hidden):
-        super(MyOGBAtomEncoder, self).__init__()
-        self.embedding = OGBAtomEncoder(hidden)
+        super(ZINCBondEncoder, self).__init__()
+        self.embedding = torch.nn.Embedding(num_embeddings=4, embedding_dim=hidden)
+        torch.nn.init.xavier_uniform_(self.embedding.weight.data)
+
+    def forward(self, edge_attr):
+        if edge_attr is not None:
+            return self.embedding(edge_attr)
+        else:
+            return None
+
+
+class ZINCAtomEncoder(torch.nn.Module):
+    def __init__(self, hidden):
+        super(ZINCAtomEncoder, self).__init__()
+        self.embedding = torch.nn.Embedding(num_embeddings=21, embedding_dim=hidden)
+        torch.nn.init.xavier_uniform_(self.embedding.weight.data)
 
     def forward(self, data):
         return self.embedding(data.x)
 
 
-class MyOGBBondEncoder(nn.Module):
+class MyOGBAtomEncoder(torch.nn.Module):
     def __init__(self, hidden):
-        super(MyOGBBondEncoder, self).__init__()
-        self.embedding = OGBBondEncoder(hidden)
-    
-    def forward(self, data):
-        return self.embedding(data.edge_attr)
+        super(MyOGBAtomEncoder, self).__init__()
+        self.embedding = OGB_AtomEncoder(hidden)
 
-class LapPENodeEncoder(nn.Module):
+    def forward(self, data):
+        return self.embedding(data.x)
+
+
+class LapPENodeEncoder(torch.nn.Module):
     # https://github.com/rampasek/GraphGPS/blob/main/graphgps/encoder/laplace_pos_encoder.py
-    """
-    Laplace Positional Embedding node encoder.
+    """Laplace Positional Embedding node encoder.
     LapPE of size dim_pe will get appended to each node feature vector.
     If `expand_x` set True, original node features will be first linearly
     projected to (dim_emb - dim_pe) size and the concatenated with LapPE.
-
     Args:
         dim_emb: Size of final node embedding
         expand_x: Expand node features `x` from dim_in to (dim_emb - dim_pe)
@@ -54,13 +93,13 @@ class LapPENodeEncoder(nn.Module):
         self.expand_x = expand_x and dim_emb - dim_pe > 0
 
         if pecfg.raw_norm_type is None or pecfg.raw_norm_type == "None":
-            raw_norm = nn.Identity()
+            raw_norm = torch.nn.Identity()
         elif pecfg.raw_norm_type.lower() == "batchnorm":
-            raw_norm = nn.BatchNorm1d(max_freqs)
+            raw_norm = torch.nn.BatchNorm1d(max_freqs)
         else:
             raise ValueError
 
-        self.pe_encoder = nn.Sequential(
+        self.pe_encoder = torch.nn.Sequential(
             raw_norm,
             MLP([max_freqs] + (n_layers - 1) * [2 * dim_pe] + [dim_pe], act="gelu"),
         )
@@ -97,7 +136,7 @@ class LapPENodeEncoder(nn.Module):
         return x
 
 
-class RWSENodeEncoder(nn.Module):
+class RWSENodeEncoder(torch.nn.Module):
     # https://github.com/rampasek/GraphGPS/blob/main/graphgps/encoder/kernel_pos_encoder.py
     """Configurable kernel-based Positional Encoding node encoder.
     The choice of which kernel-based statistics to use is configurable through
@@ -108,7 +147,6 @@ class RWSENodeEncoder(nn.Module):
     PE of size `dim_pe` will get appended to each node feature vector.
     If `expand_x` set True, original node features will be first linearly
     projected to (dim_emb - dim_pe) size and the concatenated with PE.
-    
     Args:
         dim_emb: Size of final node embedding
         expand_x: Expand node features `x` from dim_in to (dim_emb - dim_pe)
@@ -137,11 +175,11 @@ class RWSENodeEncoder(nn.Module):
             )
 
         if expand_x and dim_emb - dim_pe > 0:
-            self.linear_x = nn.Linear(dim_in, dim_emb - dim_pe)
+            self.linear_x = torch.nn.Linear(dim_in, dim_emb - dim_pe)
         self.expand_x = expand_x and dim_emb - dim_pe > 0
 
         if norm_type == "batchnorm":
-            self.raw_norm = nn.BatchNorm1d(num_rw_steps)
+            self.raw_norm = torch.nn.BatchNorm1d(num_rw_steps)
         else:
             self.raw_norm = None
 
@@ -176,7 +214,8 @@ class RWSENodeEncoder(nn.Module):
 
 
 class FeatureEncoder(torch.nn.Module):
-    def __init__(self, hidden, lap_dim: int, rwse_dim: int):
+
+    def __init__(self, hidden, dataset: str, lap_dim: int, rwse_dim: int):
         super(FeatureEncoder, self).__init__()
 
         lin_hidden = hidden
@@ -187,7 +226,7 @@ class FeatureEncoder(torch.nn.Module):
 
         assert lin_hidden > 0
 
-        self.linear_embed = MyOGBAtomEncoder(hidden=lin_hidden)
+        self.linear_embed = get_node_encoder(dataset, lin_hidden)
 
         # rwse:
         #     kernel: 20
@@ -238,5 +277,4 @@ class FeatureEncoder(torch.nn.Module):
             x = self.lap_encoder(x, data)
         if self.rw_encoder is not None:
             x = self.rw_encoder(x, data)
-
         return x

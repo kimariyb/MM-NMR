@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from flash_attn import flash_attn_varlen_qkvpacked_func
 
 
-class AttnModule(nn.Module):
+class AttnModule(torch.nn.Module):
     def __init__(self, dim_h, num_heads, dropout, batch_first=True):
         super(AttnModule, self).__init__()
         self.dim_h = dim_h
@@ -33,7 +33,7 @@ class AttnModule(nn.Module):
         return out
 
 
-class SwiGLU(nn.Module):
+class SwiGLU(torch.nn.Module):
     def __init__(self, dim_h, expansion):
         super(SwiGLU, self).__init__()
         self.dim_h = dim_h
@@ -46,7 +46,7 @@ class SwiGLU(nn.Module):
         return self.w2(F.gelu(x1) * x3)
 
 
-class TfModule(nn.Module):
+class TfModule(torch.nn.Module):
     def __init__(
         self,
         dim_h,
@@ -58,21 +58,21 @@ class TfModule(nn.Module):
         batch_first=True,
     ):
         super(TfModule, self).__init__()
-        self.proj_to_tf = nn.LazyLinear(dim_h)
-        self.attn_layers = nn.ModuleList(
+        self.proj_to_tf = torch.nn.LazyLinear(dim_h)
+        self.attn_layers = torch.nn.ModuleList(
             [
                 AttnModule(dim_h, num_heads, dropout, batch_first)
                 for _ in range(num_layers)
             ]
         )
 
-        self.proj_norm = nn.LayerNorm(128)
+        self.proj_norm = torch.nn.LayerNorm(128)
 
         if new_arch:
             self.attn_norm = nn.ModuleList(
                 [torch.nn.LayerNorm(dim_h) for _ in range(num_layers)]
             )
-            self.fc_layers = nn.ModuleList(
+            self.fc_layers = torch.nn.ModuleList(
                 [SwiGLU(dim_h, expansion) for _ in range(num_layers)]
             )
             self.mlp_norm = nn.ModuleList(

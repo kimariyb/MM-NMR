@@ -1,23 +1,41 @@
 import string
-import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.attention import TfModule
-from models.gemnet import GemNetT
-from models.gnn import GINEConv
-from models.schnet import MySchNet
-from models.encoder import FeatureEncoder, MyOGBBondEncoder
-
+from layers.attention import TfModule
+from layers.encoders import get_edge_encoder, get_node_encoder
+from layers.gemnet import GemNetT
+from layers.gnn import GINEConv
+from layers.schnet import MySchNet
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DISABLE = False
 MODE = "default"
 
+dataset_output_dim = {
+    "zinc": 1,
+    "qm9": 1,
+    "esol": 1,
+    "freesolv": 1,
+    "lipo": 1,
+    "bace": 1,
+    "kraken": 4,
+    "kraken_B5": 1,
+    "kraken_L": 1,
+    "kraken_burB5": 1,
+    "kraken_burL": 1,
+    "drugs": 4,
+    "drugs_energy": 1,
+    "drugs_ip": 1,
+    "drugs_ea": 1,
+    "drugs_chi": 1,
+}
+
 
 def get_model(args, device):
-    model = RegressionGT(
+    model = ProbGT(
         n_gnn_layers=args.model.n_gnn_layers,
         n_tf_heads=args.model.n_tf_heads,
         n_tf_layers=args.model.n_tf_layers,
@@ -36,6 +54,8 @@ def get_model(args, device):
 
 class LayerPositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len=5000):
+        import math
+
         super(LayerPositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
@@ -149,7 +169,7 @@ class Model3D(nn.Module):
         else:
             raise NotImplementedError
 
-    def forward(self, data, cumsum_seq):
+    def forward(self, data, cumsum_seq, train=True):
         model_3d_tf_outputs = []
         for i in range(len(data.pos)):
             x_3d = self.model_3d(data.z, data.pos[i], data.z_batch)
@@ -168,15 +188,17 @@ class Model3D(nn.Module):
 
 
 class Model2D(nn.Module):
+
     def __init__(self, args):
         super(Model2D, self).__init__()
 
-        self.node_encoder = FeatureEncoder(
+        self.node_encoder = get_node_encoder(
+            args.dataset,
             args.model.hidden_dim,
             lap_dim=args.model.lap_dim if hasattr(args.model, "lap_dim") else 0,
             rwse_dim=args.model.rwse_dim if hasattr(args.model, "rwse_dim") else 0,
         )
-        self.edge_encoder = MyOGBBondEncoder(args.model.hidden_dim)
+        self.edge_encoder = get_edge_encoder(args.dataset, args.model.hidden_dim)
 
         self.gnn_convs = nn.ModuleList(
             [
@@ -189,7 +211,7 @@ class Model2D(nn.Module):
             ]
         )
 
-    def forward(self, data, cumsum_seq):
+    def forward(self, data, cumsum_seq, train=True):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
         x = self.node_encoder(data)
 
@@ -212,7 +234,7 @@ class Model2D(nn.Module):
         ]
         centroids_2d = torch.cat(centroids_2d_split, dim=0)
 
-        return centroids_2d # [total_nodes * n_layers, hidden_dim]
+        return centroids_2d
 
 
 def cat_list_varlen(tensors_list, cumsums_list, cumsum_final):
@@ -260,13 +282,13 @@ def cat_list_varlen(tensors_list, cumsums_list, cumsum_final):
     return cat_tensor
 
 
-class RegressionGT(nn.Module):
+class ProbGT(torch.nn.Module):
     def __init__(
         self,
         n_gnn_layers=5,
         n_tf_heads=5,
         n_tf_layers=5,
-        tf_dropout=0.2,
+        tf_dropout=0.1,
         hidden_dim=32,
         tf_hidden_dim=64,
         agg_tf_heads=3,
@@ -275,7 +297,7 @@ class RegressionGT(nn.Module):
         use_3d=True,
         args=None,
     ):
-        super(RegressionGT, self).__init__()
+        super(ProbGT, self).__init__()
 
         self.tf_hidden_dim = tf_hidden_dim
         self.n_tf_heads = n_tf_heads
@@ -294,6 +316,10 @@ class RegressionGT(nn.Module):
         if self.use_2d:
             self.model_2d = Model2D(args)
 
+        self.separate_readout = (
+            args.separate_readout if hasattr(args, "separate_readout") else False
+        )
+
         # Downstream multimodal transformer
         self.tf = TfModule(
             dim_h=self.tf_hidden_dim,
@@ -310,7 +336,6 @@ class RegressionGT(nn.Module):
         self.cls_token = nn.Parameter(torch.empty(1, 1, hidden_dim)).to(DEVICE)
         self.cls_token = nn.Parameter(torch.empty(1, hidden_dim)).to(DEVICE)
         self.sep_token = nn.Parameter(torch.empty(1, hidden_dim)).to(DEVICE)
-       
         # Modality positional embeddings
         self.pos_emb_2d = nn.Parameter(torch.empty(1, hidden_dim)).to(DEVICE)
         self.pos_emb_3d = nn.Parameter(torch.empty(1, hidden_dim)).to(DEVICE)
@@ -322,7 +347,6 @@ class RegressionGT(nn.Module):
         self.cumsum_3d = torch.zeros(args.batch_size + 1, dtype=torch.int32)
         self.full_cumsum = torch.zeros(args.batch_size + 1, dtype=torch.int32)
         self.ones_cumsum = torch.ones(args.batch_size, dtype=torch.int32).cumsum_(0)
-        
         self.max_seqlen_1d = 0
         self.max_seqlen_3d = 0
         self.max_seqlen_2d = 0
@@ -330,12 +354,23 @@ class RegressionGT(nn.Module):
         self.n_gnn_layers = n_gnn_layers
         self.bs = args.batch_size
 
-        self.readout = nn.Sequential(
-            nn.Linear(tf_hidden_dim, tf_hidden_dim // 2),
-            nn.PReLU(),
-            nn.Linear(tf_hidden_dim // 2, 1),
-        )
-
+        if hasattr(args, "separate_readout") and args.separate_readout:
+            self.readout = nn.ModuleList(
+                [
+                    nn.Sequential(
+                        nn.Linear(tf_hidden_dim, tf_hidden_dim // 2),
+                        nn.GELU(),
+                        nn.Linear(tf_hidden_dim // 2, 1),
+                    )
+                    for _ in range(dataset_output_dim[args.dataset])
+                ]
+            )
+        else:
+            self.readout = nn.Sequential(
+                nn.Linear(tf_hidden_dim, tf_hidden_dim // 2),
+                nn.GELU(),
+                nn.Linear(tf_hidden_dim // 2, dataset_output_dim[args.dataset]),
+            )
         self.init_tokens()
 
     def init_tokens(self):
@@ -371,7 +406,6 @@ class RegressionGT(nn.Module):
 
     def forward(self, data, train=True):
         seqnum = data.z_batch[-1] + 1
-
         if self.use_1d:
             self.build_cumsum_smiles(data, seqnum)
             chunk_lengths = self.cumsum_1d[1:] - self.cumsum_1d[:-1]
@@ -474,8 +508,9 @@ class RegressionGT(nn.Module):
             try:
                 copy_indexes[self.cumsum_2d[1] :] += repeated_sums
             except:
+                # import pdb
+                # pdb.set_trace()
                 pass
-
             tokens_2d = tokens_2d.scatter(
                 0,
                 copy_indexes.to(DEVICE).unsqueeze(1).expand_as(centroids_2d_no_sep),
@@ -544,10 +579,15 @@ class RegressionGT(nn.Module):
         )  # shift everybody for the sep tokens
 
         out = self.tf(tokens, self.full_cumsum[: seqnum + 1], self.max_seqlen_full)
-        
-        # get the node features
-        node_features = out[:self.full_cumsum[seqnum]]
+        out = out[self.full_cumsum[:seqnum]]  # get the [cls] tokens
 
-        node_pred = self.readout(node_features)
+        if self.separate_readout:
+            out = [readout(out) for readout in self.readout]
+            out = torch.cat(out, dim=1)
+        else:
+            out = self.readout(out)
 
-        return node_pred
+        if len(out.shape) == 2 and out.shape[1] == 1 and len(data.y.shape) == 1:
+            out = out.squeeze(1)
+
+        return out

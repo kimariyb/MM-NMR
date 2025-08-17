@@ -20,7 +20,7 @@ from .gemnet_layers.embedding_block import AtomEmbedding, EdgeEmbedding
 from .gemnet_layers.interaction_block_gemnet import InteractionBlockTripletsOnly
 from .gemnet_layers.radial_basis import RadialBasis
 from .gemnet_layers.spherical_basis import CircularBasisLayer
-from .gemnet_layers.utils import (
+from .gemnet_utils.utils import (
     compute_neighbors,
     conditional_grad,
     get_natoms,
@@ -34,58 +34,57 @@ from .gemnet_layers.utils import (
 class GemNetT(nn.Module):
     """
     GemNet-T, triplets-only variant of GemNet
-
     Parameters
     ----------
-    num_atoms (int): Unused argument
-    bond_feat_dim (int): Unused argument
-    num_targets: int
-        Number of prediction targets.
-    num_spherical: int
-        Controls maximum frequency.
-    num_radial: int
-        Controls maximum frequency.
-    num_blocks: int
-        Number of building blocks to be stacked.
-    emb_size_atom: int
-        Embedding size of the atoms.
-    emb_size_edge: int
-        Embedding size of the edges.
-    emb_size_trip: int
-        (Down-projected) Embedding size in the triplet message passing block.
-    emb_size_rbf: int
-        Embedding size of the radial basis transformation.
-    emb_size_cbf: int
-        Embedding size of the circular basis transformation (one angle).
-    emb_size_bil_trip: int
-        Embedding size of the edge embeddings in the triplet-based message passing block after the bilinear layer.
-    num_before_skip: int
-        Number of residual blocks before the first skip connection.
-    num_after_skip: int
-        Number of residual blocks after the first skip connection.
-    num_concat: int
-        Number of residual blocks after the concatenation.
-    num_atom: int
-        Number of residual blocks in the atom embedding blocks.
-    regress_forces: bool
-        Whether to predict forces. Default: True
-    direct_forces: bool
-        If True predict forces based on aggregation of interatomic directions.
-        If False predict forces based on negative gradient of energy potential.
-    cutoff: float
-        Embedding cutoff for interactomic directions in Angstrom.
-    rbf: dict
-        Name and hyperparameters of the radial basis function.
-    envelope: dict
-        Name and hyperparameters of the envelope function.
-    cbf: dict
-        Name and hyperparameters of the cosine basis function.
-    extensive: bool
-        Whether the output should be extensive (proportional to the number of atoms)
-    output_init: str
-        Initialization method for the final dense layer.
-    activation: str
-        Name of the activation function.
+        num_atoms (int): Unused argument
+        bond_feat_dim (int): Unused argument
+        num_targets: int
+            Number of prediction targets.
+        num_spherical: int
+            Controls maximum frequency.
+        num_radial: int
+            Controls maximum frequency.
+        num_blocks: int
+            Number of building blocks to be stacked.
+        emb_size_atom: int
+            Embedding size of the atoms.
+        emb_size_edge: int
+            Embedding size of the edges.
+        emb_size_trip: int
+            (Down-projected) Embedding size in the triplet message passing block.
+        emb_size_rbf: int
+            Embedding size of the radial basis transformation.
+        emb_size_cbf: int
+            Embedding size of the circular basis transformation (one angle).
+        emb_size_bil_trip: int
+            Embedding size of the edge embeddings in the triplet-based message passing block after the bilinear layer.
+        num_before_skip: int
+            Number of residual blocks before the first skip connection.
+        num_after_skip: int
+            Number of residual blocks after the first skip connection.
+        num_concat: int
+            Number of residual blocks after the concatenation.
+        num_atom: int
+            Number of residual blocks in the atom embedding blocks.
+        regress_forces: bool
+            Whether to predict forces. Default: True
+        direct_forces: bool
+            If True predict forces based on aggregation of interatomic directions.
+            If False predict forces based on negative gradient of energy potential.
+        cutoff: float
+            Embedding cutoff for interactomic directions in Angstrom.
+        rbf: dict
+            Name and hyperparameters of the radial basis function.
+        envelope: dict
+            Name and hyperparameters of the envelope function.
+        cbf: dict
+            Name and hyperparameters of the cosine basis function.
+        extensive: bool
+            Whether the output should be extensive (proportional to the number of atoms)
+        output_init: str
+            Initialization method for the final dense layer.
+        activation: str
+            Name of the activation function.
     """
 
     def __init__(

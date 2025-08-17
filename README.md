@@ -1,1 +1,3 @@
-# Multiscale Conformational Learning for NMR Shift Prediction
+# Multimodal NMR Predictor
+
+
