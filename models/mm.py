@@ -4,11 +4,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from layers.attention import TfModule
-from layers.encoders import get_edge_encoder, get_node_encoder
-from layers.gemnet import GemNetT
-from layers.gnn import GINEConv
-from layers.schnet import MySchNet
+from models.attention import TfModule
+from models.encoders import get_edge_encoder, get_node_encoder
+from models.gemnet import GemNetT
+from models.gnn import GINEConv
+from models.schnet import MySchNet
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DISABLE = False

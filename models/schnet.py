@@ -3,6 +3,7 @@ from math import pi as PI
 from typing import Callable, Dict, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import Embedding, Linear, ModuleList, Sequential
@@ -11,7 +12,7 @@ from torch_geometric.nn.resolver import aggregation_resolver as aggr_resolver
 from torch_geometric.typing import Adj, OptTensor, Size, SparseTensor
 
 
-class MySchNet(torch.nn.Module):
+class MySchNet(nn.Module):
     r"""From: https://pytorch-geometric.readthedocs.io/en/latest/_modules/torch_geometric/nn/models/schnet.html#SchNet
     The continuous-filter convolutional neural network SchNet from the
     `"SchNet: A Continuous-filter Convolutional Neural Network for Modeling

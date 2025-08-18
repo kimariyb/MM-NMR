@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from flash_attn import flash_attn_varlen_qkvpacked_func
 
 
-class AttnModule(torch.nn.Module):
+class AttnModule(nn.Module):
     def __init__(self, dim_h, num_heads, dropout, batch_first=True):
         super(AttnModule, self).__init__()
         self.dim_h = dim_h
@@ -33,7 +33,7 @@ class AttnModule(torch.nn.Module):
         return out
 
 
-class SwiGLU(torch.nn.Module):
+class SwiGLU(nn.Module):
     def __init__(self, dim_h, expansion):
         super(SwiGLU, self).__init__()
         self.dim_h = dim_h
@@ -46,19 +46,21 @@ class SwiGLU(torch.nn.Module):
         return self.w2(F.gelu(x1) * x3)
 
 
-class TfModule(torch.nn.Module):
+class TfModule(nn.Module):
     def __init__(
         self,
-        dim_h,
-        num_heads,
-        num_layers,
-        dropout,
-        new_arch=True,
-        expansion=8 / 3,
-        batch_first=True,
+        dim_h,          # 隐藏层维度
+        num_heads,      # 注意力头的数量
+        num_layers,     # 层数
+        dropout,        # dropout率
+        new_arch=True,  # 是否使用新架构
+        expansion=8 / 3,# SwiGLU扩展因子
+        batch_first=True, # batch维度是否在第一个
     ):
-        super(TfModule, self).__init__()
+        super(TfModule, self).__init__()  # 调用父类初始化方法
+        # 将输入投影到隐藏层维度
         self.proj_to_tf = torch.nn.LazyLinear(dim_h)
+        # 创建注意力层列表
         self.attn_layers = torch.nn.ModuleList(
             [
                 AttnModule(dim_h, num_heads, dropout, batch_first)
@@ -66,29 +68,38 @@ class TfModule(torch.nn.Module):
             ]
         )
 
+        # 输入层归一化
         self.proj_norm = torch.nn.LayerNorm(128)
 
-        if new_arch:
+        if new_arch:  # 如果使用新架构
+            # 注意力层归一化
             self.attn_norm = nn.ModuleList(
                 [torch.nn.LayerNorm(dim_h) for _ in range(num_layers)]
             )
+            # SwiGLU前馈层
             self.fc_layers = torch.nn.ModuleList(
                 [SwiGLU(dim_h, expansion) for _ in range(num_layers)]
             )
+            # MLP层归一化
             self.mlp_norm = nn.ModuleList(
                 [torch.nn.LayerNorm(dim_h) for _ in range(num_layers)]
             )
+            # 设置前向传播方法为新架构版本
             self.tf_fwd = self.fwd_new
-        else:
+        else:  # 如果使用旧架构
+            # 输入层归一化
             self.norm_input = nn.ModuleList(
                 [torch.nn.LayerNorm(dim_h) for _ in range(num_layers)]
             )
+            # 注意力层归一化
             self.attn_norm = nn.ModuleList(
                 [torch.nn.LayerNorm(dim_h) for _ in range(num_layers)]
             )
+            # 线性前馈层
             self.fc_layers = torch.nn.ModuleList(
                 [torch.nn.Linear(dim_h, dim_h) for _ in range(num_layers)]
             )
+            # 设置前向传播方法为旧架构版本
             self.tf_fwd = self.fwd_old
 
     def fwd_old(self, x, cumsum_seq, max_len):
