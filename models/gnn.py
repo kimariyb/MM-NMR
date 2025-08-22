@@ -1,7 +1,7 @@
-from typing import Union
+from typing import Union, Optional
 
 import torch
-from torch import Tensor
+import torch.nn as nn
 from torch_geometric.nn import MLP
 from torch_geometric.nn.conv import GINEConv as PyGGINEConv
 from torch_geometric.nn.dense.linear import Linear as PyGLinear
@@ -9,28 +9,25 @@ from torch_geometric.typing import OptPairTensor, OptTensor, Size
 
 
 class GINEConv(PyGGINEConv):
-
     def __init__(self, bond_encoder, in_channels, out_channels, **kwargs):
-
         mlp = MLP(
             channel_list=[in_channels, out_channels, out_channels],
             act="gelu",
             dropout=0.1,
         )
         super().__init__(nn=mlp, **kwargs)
-        self.bond_encoder = torch.nn.Sequential(
+        self.bond_encoder = nn.Sequential(
             bond_encoder, PyGLinear(-1, in_channels)
         )
 
     def forward(
         self,
-        x: Union[Tensor, OptPairTensor],
-        edge_index: Tensor,
-        edge_attr: OptTensor = None,
-        size: Size = None,
-    ) -> Tensor:
-
-        if isinstance(x, Tensor):
+        x: Union[torch.Tensor, OptPairTensor],
+        edge_index: torch.Tensor,
+        edge_attr: Optional[OptTensor] = None,
+        size: Optional[Size] = None,
+    ) -> torch.Tensor:
+        if isinstance(x, torch.Tensor):
             x = (x, x)
 
         if self.bond_encoder is not None and edge_attr is not None:
@@ -45,5 +42,5 @@ class GINEConv(PyGGINEConv):
 
         return self.nn(out)
 
-    def message(self, x_j: Tensor, edge_attr: OptTensor) -> Tensor:
+    def message(self, x_j: torch.Tensor, edge_attr: OptTensor) -> torch.Tensor:
         return x_j if edge_attr is None else x_j + edge_attr

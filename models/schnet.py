@@ -1,18 +1,16 @@
-
-from math import pi as PI
-from typing import Callable, Dict, Optional, Tuple, Union
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from torch import Tensor
 from torch.nn import Embedding, Linear, ModuleList, Sequential
 from torch_geometric.nn import MessagePassing, SumAggregation, radius_graph
-from torch_geometric.nn.resolver import aggregation_resolver as aggr_resolver
-from torch_geometric.typing import Adj, OptTensor, Size, SparseTensor
+from torch_geometric.typing import OptTensor
+from math import pi as PI
+from typing import Callable, Optional, Tuple
 
 
-class MySchNet(nn.Module):
+class SchNet(nn.Module):
     r"""From: https://pytorch-geometric.readthedocs.io/en/latest/_modules/torch_geometric/nn/models/schnet.html#SchNet
     The continuous-filter convolutional neural network SchNet from the
     `"SchNet: A Continuous-filter Convolutional Neural Network for Modeling
@@ -54,12 +52,6 @@ class MySchNet(nn.Module):
         max_num_neighbors (int, optional): The maximum number of neighbors to
             collect for each node within the :attr:`cutoff` distance.
             (default: :obj:`32`)
-        readout (str, optional): Whether to apply :obj:`"add"` or :obj:`"mean"`
-            global aggregation. (default: :obj:`"add"`)
-        dipole (bool, optional): If set to :obj:`True`, will use the magnitude
-            of the dipole moment to make the final prediction, *e.g.*, for
-            target 0 of :class:`torch_geometric.datasets.QM9`.
-            (default: :obj:`False`)
         mean (float, optional): The mean of the property to predict.
             (default: :obj:`None`)
         std (float, optional): The standard deviation of the property to
@@ -68,8 +60,6 @@ class MySchNet(nn.Module):
             properties.
             Expects a vector of shape :obj:`(max_atomic_number, )`.
     """
-
-
     def __init__(
         self,
         hidden_channels: int = 128,
@@ -79,8 +69,6 @@ class MySchNet(nn.Module):
         cutoff: float = 10.0,
         interaction_graph: Optional[Callable] = None,
         max_num_neighbors: int = 32,
-        readout: str = 'add',
-        dipole: bool = False,
         mean: Optional[float] = None,
         std: Optional[float] = None,
         atomref: OptTensor = None,
@@ -92,18 +80,9 @@ class MySchNet(nn.Module):
         self.num_interactions = num_interactions
         self.num_gaussians = num_gaussians
         self.cutoff = cutoff
-        self.dipole = dipole
         self.sum_aggr = SumAggregation()
-        self.readout = aggr_resolver('sum' if self.dipole else readout)
         self.mean = mean
         self.std = std
-        self.scale = None
-
-        if self.dipole:
-            import ase
-            
-            atomic_mass = torch.from_numpy(ase.data.atomic_masses)
-            self.register_buffer('atomic_mass', atomic_mass)
 
         # Support z == 0 for padding atoms so that their embedding vectors
         # are zeroed and do not receive any gradients.
@@ -119,13 +98,13 @@ class MySchNet(nn.Module):
 
         self.interactions = ModuleList()
         for _ in range(num_interactions):
-            block = InteractionBlock(hidden_channels, num_gaussians,
-                                     num_filters, cutoff)
+            block = InteractionBlock(
+                hidden_channels=hidden_channels,
+                num_gaussians=num_gaussians,
+                num_filters=num_filters,
+                cutoff=cutoff
+            )
             self.interactions.append(block)
-
-        # self.lin1 = Linear(hidden_channels, hidden_channels // 2)
-        # self.act = ShiftedSoftplus()
-        # self.lin2 = Linear(hidden_channels // 2, hidden_channels // 2)
 
         self.lin1 = Linear(hidden_channels, hidden_channels)
         self.act = ShiftedSoftplus()
@@ -151,9 +130,10 @@ class MySchNet(nn.Module):
         if self.atomref is not None:
             self.atomref.weight.data.copy_(self.initial_atomref)
 
-
-    def forward(self, z: Tensor, pos: Tensor,
-                batch: OptTensor = None) -> Tensor:
+    def forward(
+        self, z: Tensor, pos: Tensor,
+        batch: OptTensor = None
+    ) -> Tensor:
         r"""Forward pass.
 
         Args:
@@ -178,32 +158,13 @@ class MySchNet(nn.Module):
         h = self.act(h)
         h = self.lin2(h)
 
-        if self.dipole:
-            # Get center of mass.
-            mass = self.atomic_mass[z].view(-1, 1)
-            M = self.sum_aggr(mass, batch, dim=0)
-            c = self.sum_aggr(mass * pos, batch, dim=0) / M
-            h = h * (pos - c.index_select(0, batch))
-
-        if not self.dipole and self.mean is not None and self.std is not None:
+        if self.mean is not None and self.std is not None:
             h = h * self.std + self.mean
 
-        if not self.dipole and self.atomref is not None:
+        if self.atomref is not None:
             h = h + self.atomref(z)
 
         return h
-    
-        # out = self.readout(h, batch, dim=0)
-        # return out
-
-        # if self.dipole:
-        #     out = torch.norm(out, dim=-1, keepdim=True)
-
-        # if self.scale is not None:
-        #     out = self.scale * out
-
-        # return out
-
 
     def __repr__(self) -> str:
         return (f'{self.__class__.__name__}('
@@ -214,10 +175,7 @@ class MySchNet(nn.Module):
                 f'cutoff={self.cutoff})')
 
 
-
-
-
-class RadiusInteractionGraph(torch.nn.Module):
+class RadiusInteractionGraph(nn.Module):
     r"""Creates edges based on atom positions :obj:`pos` to all points within
     the cutoff distance.
 
@@ -251,7 +209,7 @@ class RadiusInteractionGraph(torch.nn.Module):
         return edge_index, edge_weight
 
 
-class InteractionBlock(torch.nn.Module):
+class InteractionBlock(nn.Module):
     def __init__(self, hidden_channels: int, num_gaussians: int,
                  num_filters: int, cutoff: float):
         super().__init__()
