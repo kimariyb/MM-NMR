@@ -20,7 +20,7 @@ class CarbonNMRDataset(InMemoryDataset):
 
     @property
     def processed_dir(self):
-        return os.path.join(self.root, "processed")
+        return os.path.join(self.root, "carbon", "processed")
     
     @property
     def raw_file_names(self):
