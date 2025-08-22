@@ -237,15 +237,20 @@ class MoleculeFilter:
             custom_filters: 自定义过滤函数列表，每个函数接受一个RDKit分子对象并返回布尔值
         """
         # 默认允许的原子（H, B, C, N, O, F, Si, P, S, Cl, Br）
-        self.allowed_atoms = allowed_atoms or [1, 5, 6, 7, 8, 9, 14, 15, 16, 17, 35]
+        if allowed_atoms is None:
+            allowed_atoms = [1, 5, 6, 7, 8, 9, 14, 15, 16, 17, 35]
+        self.allowed_atoms = allowed_atoms 
         
         # 默认禁止的官能团
-        self.forbidden_fragments = forbidden_fragments or [
-            '[N+](=O)[O-]',      # 硝基
-            '[S](=O)(=O)O',      # 硫酸
-            '[P](=O)(O)O',       # 磷酸
-            '[N+;!-]'            # 季铵盐
-        ]
+        if forbidden_fragments is None:
+            forbidden_fragments = [
+                '[N+](=O)[O-]',      # 硝基
+                '[S](=O)(=O)O',      # 硫酸
+                '[P](=O)(O)O',       # 磷酸
+                '[N+;!-]'            # 季铵盐
+            ]
+        self.forbidden_fragments = forbidden_fragments
+  
         
         # 原子和分子量限制
         self.min_heavy_atoms = min_heavy_atoms

@@ -17,10 +17,6 @@ class CarbonNMRDataset(InMemoryDataset):
         self.root = root
         super(CarbonNMRDataset, self).__init__(root, transform, pre_transform, pre_filter)
         self.data, self.slices = torch.load(self.processed_paths[0]) 
- 
-    @property
-    def raw_dir(self):
-        return os.path.join(self.root, "raw")
 
     @property
     def processed_dir(self):
@@ -28,7 +24,7 @@ class CarbonNMRDataset(InMemoryDataset):
     
     @property
     def raw_file_names(self):
-        return 'carbon_dataset.sdf'
+        return 'nmrshiftdb2withsignals.sdf'
 
     @property
     def processed_file_names(self):
@@ -38,7 +34,7 @@ class CarbonNMRDataset(InMemoryDataset):
         data_list = []
         # 读取原始数据成 
         suppl = Chem.SDMolSupplier(
-            os.path.join(self.raw_dir, self.raw_file_names), removeHs=False
+            os.path.join(self.root, self.raw_file_names), removeHs=False
         )
 
         # 初始化分子过滤器
@@ -72,7 +68,7 @@ class CarbonNMRDataset(InMemoryDataset):
             # 如果没有 NMR Spec 就直接跳过
             if nmr_spec is None:
                 continue
-            
+
             nmr_list = []
 
             # 初始化 atom_feats 和 bond_feats
@@ -178,7 +174,7 @@ class CarbonNMRDataset(InMemoryDataset):
             atom_shifts = self.parseSpec13C(spectrum_str)
 
             # 将数据添加到字典中
-            for atom_idx, shift in atom_shifts.item():
+            for atom_idx, shift in atom_shifts.items():
                 if atom_idx not in spectra:
                     spectra[atom_idx] = []
                 spectra[atom_idx].append(shift)
@@ -190,7 +186,7 @@ class CarbonNMRDataset(InMemoryDataset):
 
         return avg_shifts
     
-    def parseSpec13C(spectrum_line: str) -> Dict:
+    def parseSpec13C(self, spectrum_line: str) -> Dict:
         atom_shifts = {}
         
         # 分割每个数据点
@@ -208,3 +204,5 @@ class CarbonNMRDataset(InMemoryDataset):
                 continue
         
         return atom_shifts
+    
+
